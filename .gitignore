@@ -179,3 +179,5 @@ __pypackages__/
 */deoldify-venv/
 */env/
 */Env/
+/models
+verify_gpu_colorization.ps1
