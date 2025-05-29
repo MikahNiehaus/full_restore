@@ -1,0 +1,181 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+debug.log
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# mypy
+.mypy_cache/
+.dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# VS Code
+.vscode/
+
+# Large files
+*.pth
+*.ckpt
+*.pt
+*.h5
+*.npz
+*.npy
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.sqlite3
+*.db
+*.lfs
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+
+# Ignore all common image file types and related folders
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.tiff
+*.tif
+*.webp
+*.ico
+*.heic
+*.raw
+*.svg
+# Ignore all video file types
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.mpg
+*.mpeg
+*.3gp
+*.m4v
+*.ts
+*.ogv
+*.mts
+*.m2ts
+*.vob
+*.rm
+*.asf
+*.f4v
+*.mxf
+*.yuv
+*.divx
+*.dv
+*.m2v
+*.mpe
+*.mpv
+*.qt
+*.svi
+*.amv
+*.drc
+*.mng
+*.roq
+*.nsv
+*.apng
+*.j2k
+*.jp2
+*.jpf
+*.jpx
+*.jpm
+*.mj2
+# Ignore folders commonly used for image/video outputs or temp data
+outputs/
+processed/
+temp_video_frames/
+temp_colorized_frames/
+temp_audio/
+result_images/
+inputs/
+voicefixer2/
+test_audio/
+# Ignore all virtual environments
+venv/
+.venv/
+deoldify-venv/
+DeOldify/deoldify-venv/
+ENV/
+.env/
+Env/
+ENV3/
+venv3/
+.venv3/
+__pypackages__/
+*/venv/
+*/.venv/
+*/ENV/
+*/.env/
+*/deoldify-venv/
+*/env/
+*/Env/

@@ -1,0 +1,31 @@
+# --- Audio/Video/Colorization requirements for robust pipeline ---
+# Audio processing
+pydub
+librosa
+soundfile
+torchaudio
+noisereduce
+ffmpeg-python
+# Colorization/DeOldify
+fastai==1.0.61
+torch>=1.7.1
+# Use torch with CUDA if available, or CPU fallback
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+opencv-python
+matplotlib
+scipy
+requests
+pyyaml
+bottleneck
+numexpr
+pandas
+fastprogress
+beautifulsoup4
+# Video/audio handling
+moviepy
+# AI Upscaling
+realesrgan
+# System
+numpy
+# ---
+# NOTE: You must have ffmpeg installed and on your system PATH for full functionality.
