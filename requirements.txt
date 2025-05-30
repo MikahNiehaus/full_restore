@@ -3,9 +3,11 @@
 pydub
 librosa
 soundfile
+scipy>=1.11.0
 torchaudio
 noisereduce
 ffmpeg-python
+tqdm
 # Colorization/DeOldify
 fastai==1.0.61
 torch>=1.7.1

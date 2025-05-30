@@ -16,8 +16,6 @@ from IPython.display import Image as ipythonimage
 import cv2
 import logging
 
-CUDA_WARNING_PRINTED = False
-
 # adapted from https://www.pyimagesearch.com/2016/04/25/watermarking-images-with-opencv-and-python/
 def get_watermarked(pil_image: Image) -> Image:
     try:
@@ -53,10 +51,7 @@ class ModelImageVisualizer:
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     def _clean_mem(self):
-        # Explicitly clean GPU memory
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print(f"[DEBUG] GPU memory cleared. Available: {torch.cuda.get_device_properties(0).total_memory/1e9:.2f}GB")
+        torch.cuda.empty_cache()
         # gc.collect()
 
     def _open_pil_image(self, path: Path) -> Image:
@@ -103,23 +98,21 @@ class ModelImageVisualizer:
         compare: bool = False,
         post_process: bool = True,
         watermarked: bool = True,
-        force_cpu: bool = False
     ) -> Path:
         path = Path(path)
         if results_dir is None:
             results_dir = Path(self.results_dir)
-        # Patch: call the standalone get_transformed_image function
-        result = get_transformed_image(
-            self, path, render_factor, post_process=post_process, watermarked=watermarked, force_cpu=force_cpu
+        result = self.get_transformed_image(
+            path, render_factor, post_process=post_process,watermarked=watermarked
         )
         orig = self._open_pil_image(path)
-        # Skip plotting to avoid _plot_image error
-        # if compare:
-        #     self._plot_comparison(
-        #         figsize, render_factor, display_render_factor, orig, result
-        #     )
-        # else:
-        #     self._plot_solo(figsize, render_factor, display_render_factor, result)
+        if compare:
+            self._plot_comparison(
+                figsize, render_factor, display_render_factor, orig, result
+            )
+        else:
+            self._plot_solo(figsize, render_factor, display_render_factor, result)
+
         orig.close()
         result_path = self._save_result_image(path, result, results_dir=results_dir)
         result.close()
@@ -166,43 +159,26 @@ class ModelImageVisualizer:
         )
 
     def _save_result_image(self, source_path: Path, image: Image, results_dir = None) -> Path:
-        # Ensure Path objects for compatibility with / operator
-        results_dir = Path(results_dir)
-        source_path = Path(source_path)
+        if results_dir is None:
+            results_dir = Path(self.results_dir)
         result_path = results_dir / source_path.name
         image.save(result_path)
         return result_path
 
-def get_transformed_image(
-    self, path: Path, render_factor: int = None, post_process: bool = True,
-    watermarked: bool = True, force_cpu: bool = False
-) -> Image:
-    global CUDA_WARNING_PRINTED
-    learn = self.filter.filters[0].learn
-    # Force CPU or CUDA if available
-    if force_cpu:
-        print("[INFO] Forcing model to CPU...")
-        learn.model.cpu()
-    elif torch.cuda.is_available():
-        device = next(learn.model.parameters()).device
-        if device.type != 'cuda':
-            print("[INFO] Moving model to GPU")
-            learn.model.cuda()
-    else:
-        if not CUDA_WARNING_PRINTED:
-            print("[WARNING] CUDA not available for colorization")
-            CUDA_WARNING_PRINTED = True
+    def get_transformed_image(
+        self, path: Path, render_factor: int = None, post_process: bool = True,
+        watermarked: bool = True,
+    ) -> Image:
+        self._clean_mem()
+        orig_image = self._open_pil_image(path)
+        filtered_image = self.filter.filter(
+            orig_image, orig_image, render_factor=render_factor,post_process=post_process
+        )
 
-    self._clean_mem()
-    orig_image = self._open_pil_image(path)
-    filtered_image = self.filter.filter(
-        orig_image, orig_image, render_factor=render_factor,post_process=post_process
-    )
+        if watermarked:
+            return get_watermarked(filtered_image)
 
-    if watermarked:
-        return get_watermarked(filtered_image)
-
-    return filtered_image
+        return filtered_image
 
     def _plot_image(
         self,
@@ -437,7 +413,7 @@ def get_video_colorizer(render_factor: int = 21) -> VideoColorizer:
 
 def get_artistic_video_colorizer(
     root_folder: Path = Path('./'),
-    weights_name: str = 'ColorizeStable_gen',
+    weights_name: str = 'ColorizeArtistic_gen',
     results_dir='result_images',
     render_factor: int = 35
 ) -> VideoColorizer:
@@ -482,7 +458,7 @@ def get_stable_image_colorizer(
 
 def get_artistic_image_colorizer(
     root_folder: Path = Path('./'),
-    weights_name: str = 'ColorizeStable_gen',
+    weights_name: str = 'ColorizeArtistic_gen',
     results_dir='result_images',
     render_factor: int = 35
 ) -> ModelImageVisualizer:

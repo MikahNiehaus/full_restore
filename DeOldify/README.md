@@ -455,7 +455,7 @@ ImageColorizerStable.ipynb, and VideoColorizer.ipynb.
 
 ### Completed Generator Weights
 
-- [Artistic](https://data.deepai.org/deoldify/ColorizeStable_gen.pth)
+- [Artistic](https://data.deepai.org/deoldify/ColorizeArtistic_gen.pth)
 - [Stable](https://www.dropbox.com/s/axsd2g85uyixaho/ColorizeStable_gen.pth?dl=0)
 - [Video](https://data.deepai.org/deoldify/ColorizeVideo_gen.pth)
 

@@ -29,13 +29,6 @@ class BaseFilter(IFilter):
             self.learn.model = self.learn.model.cpu()
         
         self.device = next(self.learn.model.parameters()).device
-        
-        # Explicitly move to GPU if available but not used
-        if torch.cuda.is_available() and self.device.type != 'cuda':
-            print("[INFO] Moving model to CUDA...")
-            self.learn.model = self.learn.model.cuda()
-            self.device = next(self.learn.model.parameters()).device
-            print(f"[INFO] Model now on device: {self.device}")
         self.norm, self.denorm = normalize_funcs(*stats)
 
     def _transform(self, image: PilImage) -> PilImage:
