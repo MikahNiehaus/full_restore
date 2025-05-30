@@ -45,31 +45,39 @@ class ImageProcessor:
             bool: True if successful, False otherwise
         """
         try:
+            print(f"[ENHANCE] Starting enhancement for: {input_path}")
+            print(f"[ENHANCE] Output path: {output_path}, Scale: {scale}, Brighten: {brighten_factor}")
             # Read image
             img = cv2.imread(input_path)
             if img is None:
-                print(f"Could not read image: {input_path}")
+                print(f"[ENHANCE][ERROR] Could not read image: {input_path}")
                 return False
                 
             # Convert to RGB for processing
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            print(f"[ENHANCE] Image loaded and converted to RGB.")
             
             # Gentle bilateral filter
             img_filtered = cv2.bilateralFilter(img_rgb, 5, 40, 40)
+            print(f"[ENHANCE] Bilateral filter applied.")
             
             # Light detail enhancement (lower sigma)
             img_details = cv2.detailEnhance(img_filtered, sigma_s=5, sigma_r=0.08)
+            print(f"[ENHANCE] Detail enhancement applied.")
             
             # Mild upscaling (if scale > 1)
             h, w = img_details.shape[:2]
             if scale > 1:
                 img_upscaled = cv2.resize(img_details, (w * scale, h * scale), interpolation=cv2.INTER_LANCZOS4)
+                print(f"[ENHANCE] Image upscaled to {(w*scale, h*scale)}.")
             else:
                 img_upscaled = img_details
+                print(f"[ENHANCE] No upscaling applied.")
             
             # Very gentle unsharp mask (reduce strength)
             blur = cv2.GaussianBlur(img_upscaled, (0, 0), 1.0)
             img_upscaled = cv2.addWeighted(img_upscaled, 1.10, blur, -0.08, 0)  # Lowered from 1.5/-0.5
+            print(f"[ENHANCE] Unsharp mask applied.")
             
             # Use PIL for mild brightness/contrast
             pil_img = Image.fromarray(img_upscaled)
@@ -80,215 +88,164 @@ class ImageProcessor:
             
             # Save the final enhanced image
             final_img.save(output_path)
-            print(f"Enhanced image saved to: {output_path}")
+            print(f"[ENHANCE] Enhanced image saved to: {output_path}")
             return True
             
         except Exception as e:
-            print(f"Error enhancing image: {e}")
+            print(f"[ENHANCE][ERROR] Error enhancing image: {e}")
             traceback.print_exc()
             return False
             
-    def colorize_image(self, input_path, output_path, artistic=True, render_factor=35, color_boost=1.0):
+    def colorize_image(self, input_path, output_path, color_model='stable', render_factor=25, color_boost=1.0):
         """
-        Colorize an image using DeOldify.
+        Colorize an image using DeOldify, always forcing CPU usage.
         
         Args:
             input_path (str): Path to the input image
             output_path (str): Path to save the colorized image
-            artistic (bool): Whether to use the artistic model
-            render_factor (int): Render factor for DeOldify
-            color_boost (float): Color saturation multiplier
-            
+            color_model (str): 'stable', 'artistic', or 'both' (default: 'stable')
+            render_factor (int): Render factor for DeOldify (default: 25 for CPU)
+            color_boost (float): Color saturation multiplier (NOT USED - removed to prevent orange tint)
+        
         Returns:
             bool: True if successful, False otherwise
         """
         try:
+            print(f"\n===============================================")
+            print(f"DEBUG: Colorizing image with DeOldify ({color_model} model)")
+            print(f"DEBUG: Input: {input_path}")
+            print(f"DEBUG: Output: {output_path}")
+            print(f"DEBUG: Render factor: {render_factor}")
+            print(f"===============================================\n")
+
             # Import DeOldify
             from deoldify.visualize import get_image_colorizer
             from deoldify import device
             from deoldify.device_id import DeviceId
-            import torch
             
-            # Determine if we should use CPU from the start
-            force_cpu = not torch.cuda.is_available()
+            # Always force CPU
+            device.set(device=DeviceId.CPU)
+            force_cpu = True
             
-            if force_cpu:
-                # Explicitly set device to CPU if no CUDA available
-                print("[INFO] GPU not available, using CPU for colorization...")
-                device.set(device=DeviceId.CPU)
+            # Check if the models exist in the custom directory
+            model_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'My PTH'))
+            print(f"DEBUG: Looking for models in: {model_dir}")
+            
+            # Set environment variable for DeOldify to find models
+            os.environ['DEOLDIFY_MODELS'] = model_dir
+            print(f"DEBUG: Set DEOLDIFY_MODELS environment variable to: {os.environ['DEOLDIFY_MODELS']}")
+            
+            models_to_try = []
+            if color_model == 'both':
+                models_to_try = ['stable', 'artistic']
+            elif color_model == 'artistic':
+                models_to_try = ['artistic']
             else:
+                models_to_try = ['stable']
+            
+            print(f"DEBUG: Will try these models in order: {models_to_try}")
+            
+            last_success = False
+            for model in models_to_try:
                 try:
-                    # Check available GPU memory - don't attempt GPU if too little available
-                    free_memory_mb = torch.cuda.get_device_properties(0).total_memory / 1024**2
-                    if free_memory_mb < 2000:  # At least 2GB required
-                        print(f"[WARNING] Low GPU memory ({free_memory_mb:.0f}MB), using CPU instead...")
-                        force_cpu = True
-                        device.set(device=DeviceId.CPU)
-                except Exception as e:
-                    print(f"[WARNING] Error checking GPU memory: {e}")
-                    # Proceed with default device settings
-            
-            print(f"Initializing DeOldify colorizer (using {'CPU' if force_cpu else 'GPU'})...")
-            colorizer = get_image_colorizer(artistic=artistic)
-            
-            # First attempt: try to colorize with current settings (CPU or GPU)
-            try:
-                print(f"Colorizing image with DeOldify (artistic={artistic})...")
-                # For CPU mode, reduce render factor to speed up processing
-                if force_cpu and render_factor > 25:
-                    adjusted_render_factor = min(render_factor, 25)
-                    print(f"[INFO] Reducing render factor from {render_factor} to {adjusted_render_factor} for CPU mode")
-                else:
-                    adjusted_render_factor = render_factor
-                
-                colorized_path = colorizer.plot_transformed_image(
-                    input_path,
-                    render_factor=adjusted_render_factor,
-                    watermarked=False,
-                    post_process=True,
-                    results_dir=os.path.dirname(output_path),
-                    force_cpu=force_cpu
-                )
-                print(f"[DEBUG] plot_transformed_image returned: {colorized_path}")
-                
-                # Process the result if successful
-                if isinstance(colorized_path, str) and os.path.exists(colorized_path):
-                    print(f"[DEBUG] Generated file exists at: {colorized_path}")
+                    # Check if model file exists
+                    if model == 'stable':
+                        model_path = os.path.join(model_dir, 'ColorizeStable_gen.pth')
+                    else:
+                        model_path = os.path.join(model_dir, 'ColorizeArtistic_gen.pth')
+                        
+                    if not os.path.exists(model_path):
+                        print(f"DEBUG: ERROR - Model file not found: {model_path}")
+                        continue
                     
-                    # Check if the colorized file is actually colorized (not just grayscale saved as RGB)
-                    img = Image.open(colorized_path)
+                    print(f"DEBUG: Using DeOldify {model} model from: {model_path}")
+                    print(f"DEBUG: File exists? {os.path.exists(model_path)}")
+                    print(f"DEBUG: File size: {os.path.getsize(model_path)}")
                     
-                    # Move/rename to the expected output_path if needed
-                    if os.path.abspath(colorized_path) != os.path.abspath(output_path):
-                        shutil.copy(colorized_path, output_path)
+                    # Monkey-patch the model loading to use our custom path
+                    import fastai
+                    original_load = fastai.basic_train.load_learner
                     
-                    # Boost color saturation to make the colorization more vibrant
-                    img = Image.open(output_path)
-                    enhancer = ImageEnhance.Color(img)
-                    img_colored = enhancer.enhance(color_boost)
+                    def patched_load_learner(*args, **kwargs):
+                        print(f"DEBUG: Patched load_learner called with:")
+                        print(f"DEBUG:   args: {args}")
+                        print(f"DEBUG:   kwargs: {kwargs}")
+                        
+                        if 'path' in kwargs and 'models' in str(kwargs['path']):
+                            print(f"DEBUG:   Replacing kwargs path with: {model_dir}")
+                            kwargs['path'] = model_dir
+                        elif len(args) > 0 and 'models' in str(args[0]):
+                            print(f"DEBUG:   Replacing args[0] with: {model_dir}")
+                            args = list(args)
+                            args[0] = model_dir
+                            args = tuple(args)
+                        
+                        print(f"DEBUG:   Final args: {args}")
+                        print(f"DEBUG:   Final kwargs: {kwargs}")
+                        return original_load(*args, **kwargs)
                     
-                    # Also boost contrast slightly if color_boost > 1
-                    if color_boost > 1.0:
-                        contrast = ImageEnhance.Contrast(img_colored)
-                        img_colored = contrast.enhance(1.05 + 0.05 * (color_boost-1.0))
+                    fastai.basic_train.load_learner = patched_load_learner
                     
-                    img_colored.save(output_path)
-                    print(f"Colorized image processed and saved to: {output_path}")
-                    return True
-                
-                return False
-                
-            except RuntimeError as e:
-                # If we're already using CPU and still got an error, re-raise it
-                if force_cpu:
-                    raise
-                
-                # Retry with CPU if GPU fails
-                if "CUDA" in str(e) or "cuda" in str(e) or "memory" in str(e).lower():
-                    print("[WARNING] CUDA error detected, retrying on CPU...")
-                    # Force CPU mode
-                    device.set(device=DeviceId.CPU)
+                    # Get colorizer and process the image
+                    print(f"DEBUG: Getting image colorizer for {model} model...")
+                    colorizer = get_image_colorizer(artistic=(model == 'artistic'))
+                    print(f"DEBUG: Colorizer object created: {colorizer}")
                     
-                    # Use a lower render factor on CPU for speed
-                    cpu_render_factor = min(render_factor, 25)
-                    print(f"[INFO] Using reduced render factor: {cpu_render_factor} for CPU mode")
-                    
+                    print(f"DEBUG: Processing image with {model} model...")
                     colorized_path = colorizer.plot_transformed_image(
                         input_path,
-                        render_factor=cpu_render_factor,
+                        render_factor=render_factor,
                         watermarked=False,
                         post_process=True,
                         results_dir=os.path.dirname(output_path),
-                        force_cpu=True
+                        force_cpu=force_cpu
                     )
+                    print(f"DEBUG: Colorized path returned: {colorized_path}")
+                    
+                    # Restore original function
+                    fastai.basic_train.load_learner = original_load
                     
                     if isinstance(colorized_path, str) and os.path.exists(colorized_path):
+                        print(f"DEBUG: Colorized file exists at: {colorized_path}")
+                        
                         if os.path.abspath(colorized_path) != os.path.abspath(output_path):
                             shutil.copy(colorized_path, output_path)
-                            
-                        # Apply more aggressive color enhancement for CPU mode since it tends to be less vibrant
-                        img = Image.open(output_path)
-                        enhancer = ImageEnhance.Color(img)
-                        img_colored = enhancer.enhance(1.8)  # More aggressive color boost for CPU mode
+                            print(f"DEBUG: Copied to final output path: {output_path}")
                         
-                        # Also boost contrast and brightness
-                        contrast = ImageEnhance.Contrast(img_colored)
-                        img_colored = contrast.enhance(1.2)
+                        # REMOVED: Color boosting - might be causing orange tint
+                        # No color enhancement or contrast adjustment
                         
-                        brightness = ImageEnhance.Brightness(img_colored)
-                        img_colored = brightness.enhance(1.1)
+                        print(f"DEBUG: ✓ Colorization completed, image saved to: {output_path}")
+                        last_success = True
+                        break
+                    else:
+                        print(f"DEBUG: ERROR - Failed to generate valid colorized output with {model} model")
+                        if colorized_path:
+                            print(f"DEBUG:   Path returned: {colorized_path}")
+                            print(f"DEBUG:   Exists? {os.path.exists(str(colorized_path))}")
                         
-                        img_colored.save(output_path)
-                        print(f"Colorized image (CPU mode) saved to: {output_path}")
-                        return True
-                    return False
-                else:
-                    raise
-                    
-        except Exception as e:
-            print(f"Error during DeOldify colorization: {e}")
-            import traceback
-            traceback.print_exc()
+                except Exception as e:
+                    print(f"DEBUG: ERROR - Error with {model} model: {str(e)}")
+                    print(f"DEBUG: Traceback:")
+                    traceback.print_exc()
+                    if 'models' in str(e) or 'not found' in str(e).lower():
+                        print(f"DEBUG: This appears to be a model loading error!")
+                        print(f"DEBUG: Models dir: {model_dir}")
+                        print(f"DEBUG: Model file: {model_path}")
+                        print(f"DEBUG: File exists? {os.path.exists(model_path)}")
             
-            # As a last resort, try our own fallback colorization method
-            return self._fallback_colorize(input_path, output_path, color_boost=color_boost)
+            if last_success:
+                print(f"DEBUG: Colorization completed successfully!")
+                return True
             
-    def _fallback_colorize(self, input_path, output_path, color_boost=1.0):
-        """
-        Simple colorization as a fallback when DeOldify fails completely.
-        
-        Args:
-            input_path (str): Path to the input image
-            output_path (str): Path to save the colorized image
-            color_boost (float): Color saturation multiplier
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            print("[INFO] Using fallback colorization method...")
-            # Load the image
-            img = Image.open(input_path)
-
-            # Convert to RGB if it's not already
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-
-            # Apply a warm sepia tone to add color
-            sepia_filter = (1.2, 0.87, 0.6)  # Warm sepia tone
-
-            # Split the image into bands
-            r, g, b = img.split()
-
-            # Apply the sepia filter
-            r = r.point(lambda i: i * sepia_filter[0])
-            g = g.point(lambda i: i * sepia_filter[1])
-            b = b.point(lambda i: i * sepia_filter[2])
-
-            # Merge the bands back
-            img = Image.merge('RGB', (r, g, b))
-
-            # Enhance saturation to add more color
-            enhancer = ImageEnhance.Color(img)
-            img = enhancer.enhance(color_boost)
-
-            # Enhance contrast for better definition
-            enhancer = ImageEnhance.Contrast(img)
-            img = enhancer.enhance(1.2)
-            
-            # Enhance brightness slightly
-            enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(1.1)
-
-            # Save the result
-            img.save(output_path)
-            print(f"Fallback colorization applied and saved to: {output_path}")
-            return True
+            print(f"DEBUG: ERROR - All colorization models failed.")
+            # Do NOT save any fallback or orange image. Raise error.
+            raise RuntimeError(f"DeOldify colorization failed for {input_path} (no fallback allowed)")
             
         except Exception as e:
-            print(f"Error during fallback colorization: {e}")
+            print(f"DEBUG: FATAL ERROR - Error during DeOldify colorization: {str(e)}")
             traceback.print_exc()
-            return False
+            raise RuntimeError(f"DeOldify colorization failed for {input_path}: {e}")
             
     def restore_image(self, input_path, output_path, scale=2):
         """
@@ -392,7 +349,7 @@ class ImageProcessor:
             traceback.print_exc()
             return False
 
-    def process_image(self, input_path, output_dir=None, scale=2, do_restore=True, do_colorize=True, do_enhance=True, color_boost=1.0):
+    def process_image(self, input_path, output_dir=None, scale=2, do_restore=True, do_colorize=True, do_enhance=True, color_boost=1.0, color_model='stable'):
         """
         Process a single image following these steps: restore -> colorize -> enhance.
         Produces a single final output file.
@@ -404,6 +361,8 @@ class ImageProcessor:
             do_restore (bool): Whether to run the restore step
             do_colorize (bool): Whether to run the colorize step
             do_enhance (bool): Whether to run the enhance step
+            color_boost (float): Color saturation multiplier
+            color_model (str): 'stable', 'artistic', or 'both' (default: 'stable')
             
         Returns:
             str: Path to the final processed image or None if failed
@@ -430,9 +389,10 @@ class ImageProcessor:
             # Step 2: Colorize
             if do_colorize:
                 print(f"Step 2: Colorizing with DeOldify...")
-                colorize_success = self.colorize_image(final_path, final_path, color_boost=color_boost)
+                colorize_success = self.colorize_image(final_path, final_path, color_model=color_model, color_boost=color_boost)
                 if not colorize_success:
-                    print("Colorization failed. Using restored image.")
+                    print("[FATAL] Colorization failed. No fallback will be used. Aborting pipeline.")
+                    raise RuntimeError("DeOldify colorization failed and no fallback is allowed.")
             # Step 3: Enhance
             if do_enhance:
                 print(f"Step 3: Final enhancement...")
@@ -489,14 +449,17 @@ class ImageProcessor:
                 
         return enhanced_paths
         
-    def colorize_frames(self, frame_paths, output_dir):
+    def colorize_frames(self, frame_paths, output_dir, color_model='stable', render_factor=35, color_boost=1.0):
         """
         Colorize multiple video frames.
         
         Args:
             frame_paths (list): List of paths to frame images
             output_dir (str): Directory to save colorized frames
-            
+            color_model (str): 'stable', 'artistic', or 'both' (default: 'stable')
+            render_factor (int): Render factor for DeOldify
+            color_boost (float): Color saturation multiplier
+        
         Returns:
             list: List of paths to colorized frames
         """
@@ -507,17 +470,16 @@ class ImageProcessor:
             base_name = os.path.basename(frame_path)
             colorized_path = os.path.join(output_dir, base_name)
             
-            success = self.colorize_image(frame_path, colorized_path)
+            success = self.colorize_image(frame_path, colorized_path, color_model=color_model, render_factor=render_factor, color_boost=color_boost)
             if success:
                 colorized_paths.append(colorized_path)
             else:
-                # On failure, copy original frame
-                shutil.copy(frame_path, colorized_path)
-                colorized_paths.append(colorized_path)
-                
-        return colorized_paths
+                # On failure, do NOT copy original or restored frame. Raise error.
+                raise RuntimeError(f"Colorization failed for frame: {frame_path}")
         
-    def process_frames(self, frame_paths, output_dir, scale=2):
+        return colorized_paths
+
+    def process_frames(self, frame_paths, output_dir, scale=2, color_model='stable', color_boost=1.0):
         """
         Process multiple video frames with our complete pipeline:
         restore -> colorize -> enhance.
@@ -526,7 +488,9 @@ class ImageProcessor:
             frame_paths (list): List of paths to frame images
             output_dir (str): Directory to save processed frames
             scale (int): Scale factor for upscaling
-            
+            color_model (str): 'stable', 'artistic', or 'both' (default: 'stable')
+            color_boost (float): Color saturation multiplier
+        
         Returns:
             list: List of paths to processed frames
         """
@@ -541,23 +505,17 @@ class ImageProcessor:
                 final_path = os.path.join(output_dir, f"{file_name_wo_ext}_restored.png")
                 
                 # Process the frame with our complete pipeline
-                result_path = self.process_image(frame_path, output_dir, scale)
+                result_path = self.process_image(frame_path, output_dir, scale, color_model=color_model, color_boost=color_boost)
                 
                 if result_path and os.path.exists(result_path):
                     processed_paths.append(result_path)
                 else:
-                    # On failure, copy original frame
-                    shutil.copy(frame_path, final_path)
-                    processed_paths.append(final_path)
+                    # On failure, do NOT copy original or restored frame. Raise error.
+                    raise RuntimeError(f"Processing failed for frame: {frame_path}")
             except Exception as e:
                 print(f"Error processing frame {frame_path}: {e}")
-                # Create a fallback path and copy original
-                base_name = os.path.basename(frame_path)
-                file_name_wo_ext = os.path.splitext(base_name)[0]
-                final_path = os.path.join(output_dir, f"{file_name_wo_ext}_restored.png")
-                shutil.copy(frame_path, final_path)
-                processed_paths.append(final_path)
-                
+                raise  # Propagate error, do not fallback or copy original
+        
         return processed_paths
 
 # Simple test function if executed directly

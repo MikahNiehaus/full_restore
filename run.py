@@ -18,12 +18,17 @@ def has_image_files(directory):
     return any(f.lower().endswith(image_exts) for f in os.listdir(directory))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Full restoration pipeline runner")
+    parser = argparse.ArgumentParser(description="Full pipeline runner")
     parser.add_argument('--no-restore', action='store_true', help='Disable image/video restoration step')
     parser.add_argument('--no-colorize', action='store_true', help='Disable colorization step')
     parser.add_argument('--no-enhance', action='store_true', help='Disable enhancement step')
     parser.add_argument('--no-audio-improve', action='store_true', help='Disable audio improvement step')
     parser.add_argument('--color-boost', type=float, default=1.0, help='Set color boost amount for colorization (e.g., 4 for extra color, 1 for normal)')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--stable', action='store_const', const='stable', dest='color_model', help="Use DeOldify stable model for colorization (default)")
+    group.add_argument('--artistic', action='store_const', const='artistic', dest='color_model', help="Use DeOldify artistic model for colorization")
+    group.add_argument('--both', action='store_const', const='both', dest='color_model', help="Try stable, then artistic if stable fails")
+    parser.set_defaults(color_model='stable')
     args = parser.parse_args()
 
     INPUTS_DIR = 'inputs'
@@ -83,25 +88,32 @@ if __name__ == '__main__':
 
     # Process image files using our unified image processor
     if image_files:
-        print("[INFO] Found image file(s). Running Real-ESRGAN/restore_and_colorize.py for each...")
-        # Make sure PYTHONPATH includes DeOldify
+        print("[INFO] Found image file(s). Running Real-ESRGAN/restore_and_colorize.py for each...")        # Make sure PYTHONPATH includes DeOldify
         if 'PYTHONPATH' in os.environ:
             os.environ['PYTHONPATH'] = f"{os.environ['PYTHONPATH']};{os.path.join(os.getcwd(), 'DeOldify')}"
         else:
-            os.environ['PYTHONPATH'] = f"{os.path.join(os.getcwd(), 'DeOldary')}"
+            os.environ['PYTHONPATH'] = f"{os.path.join(os.getcwd(), 'DeOldify')}"
         from unified_image_processor import ImageProcessor
+        # When processing images:
+        import inspect
         processor = ImageProcessor(OUTPUTS_DIR)
+        process_image_sig = inspect.signature(processor.process_image)
         for fname in image_files:
             in_path = os.path.join(INPUTS_DIR, fname)
             print(f"[INFO] Processing image: {fname}")
             try:
-                result_path = processor.process_image(
-                    in_path, OUTPUTS_DIR, scale=2,
+                process_image_kwargs = dict(
+                    input_path=in_path,
+                    output_dir=OUTPUTS_DIR,
+                    scale=2,
                     do_restore=not args.no_restore,
                     do_colorize=not args.no_colorize,
                     do_enhance=not args.no_enhance,
                     color_boost=int(args.color_boost)  # Ensure integer value for multiple passes
                 )
+                if 'color_model' in process_image_sig.parameters:
+                    process_image_kwargs['color_model'] = args.color_model
+                result_path = processor.process_image(**process_image_kwargs)
                 if result_path:
                     print(f"[SUCCESS] Image processed successfully: {result_path}")
                 else:

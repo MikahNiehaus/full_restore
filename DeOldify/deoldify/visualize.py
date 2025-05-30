@@ -437,7 +437,7 @@ def get_video_colorizer(render_factor: int = 21) -> VideoColorizer:
 
 def get_artistic_video_colorizer(
     root_folder: Path = Path('./'),
-    weights_name: str = 'ColorizeArtistic_gen',
+    weights_name: str = 'ColorizeStable_gen',
     results_dir='result_images',
     render_factor: int = 35
 ) -> VideoColorizer:
@@ -482,7 +482,7 @@ def get_stable_image_colorizer(
 
 def get_artistic_image_colorizer(
     root_folder: Path = Path('./'),
-    weights_name: str = 'ColorizeArtistic_gen',
+    weights_name: str = 'ColorizeStable_gen',
     results_dir='result_images',
     render_factor: int = 35
 ) -> ModelImageVisualizer:

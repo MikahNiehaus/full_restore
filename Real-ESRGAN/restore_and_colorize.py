@@ -47,10 +47,8 @@ def restore_and_colorize(input_path, output_dir=None, processed_dir=None, scale=
         if final_path and os.path.exists(final_path):
             print(f"[SUCCESS] Final restored image saved to: {final_path}")
         else:
-            print("[ERROR] Restoration failed. Using original image as fallback.")
-            fallback_path = os.path.join(output_dir, f"{file_name_without_ext}_restored.png")
-            shutil.copy(input_path, fallback_path)
-            print(f"Fallback: Copied original image as restored image: {fallback_path}")
+            print("[ERROR] Restoration failed. Aborting without fallback.")
+            raise RuntimeError("Restoration and colorization failed - no fallback allowed")
 
         # Optionally move the original file to processed_dir
         if processed_dir:

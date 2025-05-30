@@ -19,10 +19,10 @@ def check_deoldify_paths():
     
     # Check model files
     stable_model = os.path.join(models_path, 'ColorizeStable_gen.pth')
-    artistic_model = os.path.join(models_path, 'ColorizeArtistic_gen.pth')
+    artistic_model = os.path.join(models_path, 'ColorizeStable_gen.pth')
     
     print(f"ColorizeStable_gen.pth exists: {os.path.exists(stable_model)}")
-    print(f"ColorizeArtistic_gen.pth exists: {os.path.exists(artistic_model)}")
+    print(f"ColorizeStable_gen.pth exists: {os.path.exists(artistic_model)}")
     
     # Check if we can import DeOldify modules
     try:
