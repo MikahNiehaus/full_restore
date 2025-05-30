@@ -31,6 +31,13 @@ var/
 # Installer logs
 debug.log
 
+# YouTube API credentials and tokens
+YouTubeApi/client_secret*.json
+YouTubeApi/youtube_token.json
+YouTubeApi/token.*.json
+YouTubeApi/*.pickle
+YouTubeApi/oauth2.json
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -181,3 +188,7 @@ __pypackages__/
 */Env/
 /models
 verify_gpu_colorization.ps1
+YouTubeApi/authorize.py
+YouTubeApi/simple_authorize.py
+YouTubeApi/upload_video.py
+YouTubeApi/youtube_uploader.py

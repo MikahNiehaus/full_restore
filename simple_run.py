@@ -2,7 +2,7 @@
 from torch_safety_patch import *
 
 # Import the simplified watchdog that uses DeOldify directly
-from simple_watchdog import VideoWatchdog
+from simple_watchdog import VideoWatchdog, YOUTUBE_UPLOADER_AVAILABLE
 
 def main():
     print("[INFO] Starting DeOldify Video Watchdog...")

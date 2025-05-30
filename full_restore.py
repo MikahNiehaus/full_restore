@@ -40,6 +40,15 @@ from torch_safety_patch import *
 sys.path.append(str(Path(__file__).parent / 'DeOldify'))
 from deoldify.visualize import get_video_colorizer
 
+# Try to import YouTube uploader
+try:
+    from YouTubeApi.youtube_uploader import YouTubeUploader
+    YOUTUBE_UPLOADER_AVAILABLE = True
+    print("[INFO] YouTube upload functionality is available")
+except ImportError:
+    YOUTUBE_UPLOADER_AVAILABLE = False
+    print("[WARNING] YouTube upload functionality not available")
+
 # Import audio enhancer functions
 try:
     from audio_enhancer import extract_audio, AudioEnhancer, mux_audio_to_video
@@ -47,8 +56,17 @@ try:
 except ImportError:
     print("[WARNING] audio_enhancer.py not found, audio enhancement will be disabled")
     AUDIO_ENHANCER_AVAILABLE = False
+    
+# Import image restorer functions
+try:
+    from image_restorer import ImageRestorer
+    IMAGE_RESTORER_AVAILABLE = True
+    print("[INFO] AI image restoration module loaded and available")
+except ImportError:
+    IMAGE_RESTORER_AVAILABLE = False
+    print("[WARNING] image_restorer.py not found, image restoration will be disabled")
 
-class VideoProcessor:
+class VideoProcessor:     
     def __init__(
         self, 
         inputs_dir='inputs', 
@@ -56,7 +74,8 @@ class VideoProcessor:
         processed_dir='processed', 
         temp_dir='temp_video_frames',
         render_factor=40,
-        enhance_audio=True
+        enhance_audio=True,
+        restore_frames=True
     ):
         """
         Initialize the video processor
@@ -68,22 +87,24 @@ class VideoProcessor:
             temp_dir (str): Directory to store temporary files
             render_factor (int): DeOldify render factor (10-45), higher is better quality
             enhance_audio (bool): Whether to enhance audio
+            restore_frames (bool): Whether to apply AI image restoration before colorization
         """
         self.inputs_dir = Path(inputs_dir)
         self.outputs_dir = Path(outputs_dir)
         self.processed_dir = Path(processed_dir)
         self.temp_dir = Path(temp_dir)
         self.temp_colorized_dir = Path('temp_colorized_frames')
+        self.temp_restored_dir = Path('temp_restored_frames')
         self.temp_audio_dir = Path('temp_audio')
         self.supported_exts = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
         self.render_factor = render_factor
         self.enhance_audio = enhance_audio and AUDIO_ENHANCER_AVAILABLE
-        self.ensure_dirs()
-
+        self.restore_frames = restore_frames and IMAGE_RESTORER_AVAILABLE
+        self.ensure_dirs()    
     def ensure_dirs(self):
         """Ensure all required directories exist"""
         for dir_path in [self.inputs_dir, self.outputs_dir, self.processed_dir, 
-                         self.temp_dir, self.temp_colorized_dir, self.temp_audio_dir]:
+                         self.temp_dir, self.temp_colorized_dir, self.temp_restored_dir, self.temp_audio_dir]:
             dir_path.mkdir(exist_ok=True)
             print(f"[INFO] Directory exists or created: {dir_path}")
             
@@ -270,6 +291,43 @@ class VideoProcessor:
         # Return original audio if enhancement failed or is disabled
         return temp_audio_path, None
     
+    def restore_frames(self, input_dir: Path, output_dir: Path) -> List[Path]:
+        """
+        Apply AI image restoration to frames before colorization
+        
+        Args:
+            input_dir (Path): Directory containing input frames
+            output_dir (Path): Directory to save restored frames
+            
+        Returns:
+            List[Path]: List of restored frame paths
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # Clear any existing frames
+        for file in output_dir.glob("*.*"):
+            file.unlink()
+            
+        if not self.restore_frames or not IMAGE_RESTORER_AVAILABLE:
+            print("[INFO] Image restoration skipped (disabled or not available)")
+            # Simply copy the original frames to the output
+            restored_paths = []
+            frame_files = sorted(list(input_dir.glob('*.png')))
+            for i, frame_path in enumerate(frame_files):
+                output_path = output_dir / frame_path.name
+                shutil.copy(str(frame_path), str(output_path))
+                restored_paths.append(output_path)
+            return restored_paths
+            
+        # Initialize image restorer
+        print("[INFO] Setting up AI image restorer...")
+        restorer = ImageRestorer()
+        
+        # Process frames with restorer
+        print("[INFO] Restoring video frames...")
+        restored_paths = restorer.restore_frames(input_dir, output_dir)
+        
+        return restored_paths
+    
     def process_video(self, video_path: Path):
         """
         Process a single video with DeOldify colorization and audio enhancement
@@ -288,8 +346,11 @@ class VideoProcessor:
             print("[INFO] Processing audio...")
             original_audio, enhanced_audio = self.process_audio(video_path)
             
+            # Restore frames if enabled
+            restored_frames = self.restore_frames(self.temp_dir, self.temp_restored_dir)
+            
             # Colorize frames
-            colorized_frames = self.colorize_frames(self.temp_dir, self.temp_colorized_dir)
+            colorized_frames = self.colorize_frames(self.temp_restored_dir, self.temp_colorized_dir)
             
             # Get video FPS
             fps = self.get_video_fps(video_path)
@@ -318,11 +379,52 @@ class VideoProcessor:
             else:
                 # Just rename the video if no audio
                 shutil.move(str(temp_output_path), str(output_path))
-            
-            # Move original video to processed directory
+              # Move original video to processed directory
             processed_input = self.processed_dir / video_path.name
             shutil.move(str(video_path), str(processed_input))
             print(f"[INFO] Moved input video to: {processed_input}")
+            
+            # Upload to YouTube if available
+            if YOUTUBE_UPLOADER_AVAILABLE:
+                try:
+                    print("[INFO] Uploading video to YouTube...")
+                    # Generate title based on original filename
+                    video_title = f"{video_path.stem} colorized enhanced restored"
+                    
+                    # Prepare description
+                    video_description = """I created this video using AI to restore and enhance a historical recording. My goal is to make these moments from the past feel more real and accessible so we never forget the people and stories they hold.
+
+This project is still a work in progress, and I'm sharing everything I'm learning on GitHub so others can get involved or do their own restorations. 
+
+Check out the repository here to do it yourself: https://github.com/MikahNiehaus/full_restore
+
+Check out my LinkedIn to learn more about me:
+https://www.linkedin.com/in/mikahniehaus/
+
+Thanks for watching and let's keep history alive together."""
+                    
+                    # Get client secret file
+                    client_secret = Path(__file__).parent / "YouTubeApi" / "client_secret_681175603356-r8tuvdbp1gfpj56dptge8snpulhum933.apps.googleusercontent.com.json"
+                    
+                    # Create uploader and upload video
+                    if client_secret.exists():
+                        uploader = YouTubeUploader(client_secret)
+                        video_id = uploader.upload_video(
+                            str(output_path),
+                            title=video_title,
+                            description=video_description,
+                            privacy_status="unlisted"  # Not publicly listed but accessible with link
+                        )
+                        
+                        if video_id:
+                            print(f"[INFO] Successfully uploaded to YouTube: https://youtu.be/{video_id}")
+                        else:
+                            print("[WARNING] YouTube upload failed")
+                    else:
+                        print(f"[WARNING] YouTube client secret file not found at: {client_secret}")
+                except Exception as e:
+                    print(f"[WARNING] YouTube upload error: {e}")
+                    traceback.print_exc()
             
             print(f"[INFO] Processing complete. Output video: {output_path}")
             return output_path
@@ -369,9 +471,11 @@ class VideoProcessor:
         print("[INFO] Full Restore Video Processor started")
         print(f"[INFO] Monitoring directory: {self.inputs_dir}")
         print(f"[INFO] Output directory: {self.outputs_dir}")
-        print(f"[INFO] Processed originals directory: {self.processed_dir}")
+        print(f"[INFO] Processed originals directory: {self.processed_dir}")          
         print(f"[INFO] DeOldify render factor: {self.render_factor}")
         print(f"[INFO] Audio enhancement: {'Enabled' if self.enhance_audio else 'Disabled'}")
+        print(f"[INFO] AI image restoration: {'Enabled' if self.restore_frames else 'Disabled'}")
+        print(f"[INFO] YouTube upload: {'Enabled' if YOUTUBE_UPLOADER_AVAILABLE else 'Disabled'}")
         print(f"[INFO] Poll interval: {poll_interval} seconds")
         
         # Initial check for existing videos in input folder
@@ -409,8 +513,9 @@ def main():
     parser.add_argument("--output-dir", "-o", default="outputs", help="Output directory for processed videos")
     parser.add_argument("--processed-dir", "-p", default="processed", help="Directory to move original videos after processing")
     parser.add_argument("--render-factor", "-r", type=int, default=40, help="DeOldify render factor (10-45), higher is better quality")
-    parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between checks for new videos")
+    parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between checks for new videos (how often to look for new videos)")
     parser.add_argument("--no-audio-enhance", action="store_true", help="Disable audio enhancement")
+    parser.add_argument("--no-restore-frames", action="store_true", help="Disable AI image restoration")
     
     args = parser.parse_args()
     
@@ -419,13 +524,14 @@ def main():
         print(f"[WARNING] Invalid render factor {args.render_factor}. Using default of 40.")
         args.render_factor = 40
         
-    # Create and run the processor
+    # Create and run the processor - always enable audio enhancement and image restoration by default
     processor = VideoProcessor(
         inputs_dir=args.input_dir,
         outputs_dir=args.output_dir,
         processed_dir=args.processed_dir,
         render_factor=args.render_factor,
-        enhance_audio=not args.no_audio_enhance
+        enhance_audio=True,  # Always enabled by default
+        restore_frames=True  # Always enabled by default
     )
     
     processor.run(poll_interval=args.poll_interval)

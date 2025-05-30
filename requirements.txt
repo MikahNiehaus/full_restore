@@ -29,5 +29,9 @@ moviepy
 realesrgan
 # System
 numpy
+# YouTube API integration
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
 # ---
 # NOTE: You must have ffmpeg installed and on your system PATH for full functionality.
