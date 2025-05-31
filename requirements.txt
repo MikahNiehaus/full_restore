@@ -11,6 +11,7 @@ tqdm
 # Colorization/DeOldify
 fastai==1.0.61
 torch>=1.7.1
+torchvision
 # Use torch with CUDA if available, or CPU fallback
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 opencv-python
@@ -25,13 +26,21 @@ fastprogress
 beautifulsoup4
 # Video/audio handling
 moviepy
+yt-dlp
 # AI Upscaling
 realesrgan
 # System
 numpy
+pillow>=9.0.0
 # YouTube API integration
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
+# Environment variables
+python-dotenv
+# Terminal and utility
+colorama
+argparse
+ipython
 # ---
 # NOTE: You must have ffmpeg installed and on your system PATH for full functionality.
