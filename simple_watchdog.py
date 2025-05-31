@@ -7,6 +7,7 @@ from typing import Optional
 import cv2
 from tqdm import tqdm
 import traceback
+import json
 
 # Import our PyTorch patch first to fix loading issues
 from torch_safety_patch import *
@@ -175,15 +176,57 @@ class VideoWatchdog:
             shutil.move(str(temp_video_path), str(output_path))
             
         print(f"[INFO] Video reassembled and saved to {output_path}")
+    def clean_temp_directories(self):
+        """Clean up all temporary directories and recreate them"""
+        temp_dirs = [
+            Path('temp_video_frames'),
+            Path('temp_restored_frames'),
+            Path('temp_colorized_frames')
+        ]
+
+        for temp_dir in temp_dirs:
+            if temp_dir.exists():
+                print(f"[INFO] Cleaning up temporary directory: {temp_dir}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            temp_dir.mkdir(exist_ok=True)
+            print(f"[INFO] Recreated temporary directory: {temp_dir}")
+
+    def log_json(self, video_name, stage, status, message):
+        """Log results to YouTubeApi/logs.json with more detail"""
+        log_path = Path(__file__).parent / "YouTubeApi" / "logs.json"
+        try:
+            if log_path.exists():
+                with open(log_path, 'r') as f:
+                    try:
+                        logs = json.load(f)
+                    except Exception:
+                        logs = {}
+            else:
+                logs = {}
+            if video_name not in logs:
+                logs[video_name] = {}
+            logs[video_name][stage] = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": status,
+                "message": message
+            }
+            with open(log_path, 'w') as f:
+                json.dump(logs, f, indent=4)
+        except Exception as e:
+            print(f"[WARNING] Failed to log to logs.json: {e}")
+
     def process_video(self, video_path: Path):
         """Process a single video file with DeOldify"""
         print(f"[INFO] Processing video: {video_path.name}")
-        
+
+        # Clean temporary directories before processing
+        self.clean_temp_directories()
+
         output_path = None
         temp_frames_dir = Path('temp_video_frames')
         temp_restored_dir = Path('temp_restored_frames')
         temp_colorized_dir = Path('temp_colorized_frames')
-        
+
         # Ensure temp directories exist
         for temp_dir in [temp_frames_dir, temp_restored_dir, temp_colorized_dir]:
             temp_dir.mkdir(exist_ok=True)
@@ -195,6 +238,9 @@ class VideoWatchdog:
         temp_audio_path = Path('temp_audio.wav')  # Use .wav for better quality
         enhanced_audio_path = None
         
+        # AUDIO
+        audio_status = "SUCCESS"
+        audio_message = ""
         # Extract and enhance audio if available
         if AUDIO_ENHANCER_AVAILABLE:
             print("[INFO] Extracting and enhancing audio...")
@@ -208,17 +254,31 @@ class VideoWatchdog:
                     
                     if not audio_enhanced or not enhanced_audio_path.exists():
                         enhanced_audio_path = temp_audio_path
+                        audio_status = "WARNING"
+                        audio_message = "Audio enhancement failed, using original audio"
                         print("[WARNING] Audio enhancement failed, using original audio")
                 except Exception as e:
+                    audio_status = "ERROR"
+                    audio_message = f"Audio enhancement error: {e}"
                     print(f"[WARNING] Audio enhancement error: {e}")
                     enhanced_audio_path = temp_audio_path
             else:
+                audio_status = "WARNING"
+                audio_message = "No audio track found or extraction failed"
                 print("[WARNING] No audio track found or extraction failed")
         else:
             # Basic audio extraction
             self.extract_audio(video_path, temp_audio_path)
-            
-        # Apply AI image restoration if available
+            audio_status = "INFO"
+            audio_message = "Audio enhancer not available, used basic extraction"
+        
+        self.log_json(video_path.name, "audio", audio_status, audio_message)
+
+        # RESTORE & COLORIZE
+        restore_status = "SUCCESS"
+        restore_message = ""
+        colorize_status = "SUCCESS"
+        colorize_message = ""
         if IMAGE_RESTORER_AVAILABLE:
             try:
                 print("[INFO] Extracting frames for AI restoration...")
@@ -249,7 +309,12 @@ class VideoWatchdog:
                 # Restore frames
                 print("[INFO] Applying AI image restoration...")
                 restorer = ImageRestorer()
-                restorer.restore_frames(temp_frames_dir, temp_restored_dir)
+                try:
+                    restorer.restore_frames(temp_frames_dir, temp_restored_dir)
+                except Exception as e:
+                    restore_status = "ERROR"
+                    restore_message = f"Image restoration error: {e}"
+                    print(f"[ERROR] Error during image restoration: {e}")
                 
                 # Set up DeOldify colorizer for processed frames
                 print("[INFO] Setting up DeOldify colorizer...")
@@ -260,27 +325,32 @@ class VideoWatchdog:
                 frame_files = sorted(list(temp_restored_dir.glob('*.png')))
                 for i, frame_path in enumerate(tqdm(frame_files, desc="Colorizing frames")):
                     vis = colorizer.vis
-                    colorized_frame = vis.get_transformed_image(
-                        str(frame_path), 
-                        render_factor=40,  # Maximum quality
-                        watermarked=False,
-                        post_process=True
-                    )
-                    colorized_frame_path = temp_colorized_dir / f"frame_{i:05d}.png"
-                    colorized_frame.save(str(colorized_frame_path))
-                
-                # Create output path
+                    try:
+                        colorized_frame = vis.get_transformed_image(
+                            str(frame_path), 
+                            render_factor=40,  # Maximum quality
+                            watermarked=False,
+                            post_process=True
+                        )
+                        colorized_frame_path = temp_colorized_dir / f"frame_{i:05d}.png"
+                        colorized_frame.save(str(colorized_frame_path))
+                    except Exception as e:
+                        colorize_status = "ERROR"
+                        colorize_message = f"Colorization error: {e}"
+                        print(f"[ERROR] Error during colorization: {e}")
                 output_path = self.outputs_dir / f"{video_path.stem}_restored_colorized.mp4"
-                
-                # Reassemble video with enhanced audio
                 print("[INFO] Reassembling video with enhanced frames...")
                 self.reassemble_video(temp_colorized_dir, enhanced_audio_path or temp_audio_path, output_path, fps)
-                
             except Exception as e:
+                restore_status = "ERROR"
+                restore_message = f"Error during image restoration process: {e}"
                 print(f"[ERROR] Error during image restoration process: {e}")
                 traceback.print_exc()
                 frames_extracted = False
-                
+        
+        self.log_json(video_path.name, "restore", restore_status, restore_message)
+        self.log_json(video_path.name, "colorize", colorize_status, colorize_message)
+
         # If image restoration failed or is not available, use standard DeOldify directly
         if not frames_extracted:
             print("[INFO] Using standard DeOldify colorization...")
@@ -309,50 +379,54 @@ class VideoWatchdog:
             else:
                 print(f"[WARNING] DeOldify didn't return a valid result path")
             
-            # Move original video to processed folder
+        # Always upload to YouTube if enabled and output_path exists
+        if YOUTUBE_UPLOADER_AVAILABLE and output_path and Path(output_path).exists():
+            self.upload_to_youtube(video_path, output_path)
+
+        # Move original video to processed folder (always, after processing)
+        if video_path.exists():
             processed_path = self.processed_dir / video_path.name
             shutil.move(str(video_path), str(processed_path))
             print(f"[INFO] Moved original video to: {processed_path}")
-        
         print(f"[INFO] Finished processing: {video_path.name}")
+
+    def get_client_secret_file(self):
+        """Find the first client_secret_*.json file in the YouTubeApi directory."""
+        api_dir = Path(__file__).parent / "YouTubeApi"
+        for f in api_dir.glob("client_secret_*.json"):
+            return f
+        return None
 
     def upload_to_youtube(self, original_video_path: Path, colorized_video_path: Path):
         """Upload processed video to YouTube"""
         try:
             print("[INFO] Uploading video to YouTube...")
-            
-            # Get client secret file location
-            client_secret = Path(__file__).parent / "YouTubeApi" / "client_secret_681175603356-r8tuvdbp1gfpj56dptge8snpulhum933.apps.googleusercontent.com.json"
-            
-            if not client_secret.exists():
-                print(f"[WARNING] YouTube client secret file not found at {client_secret}")
+            client_secret = self.get_client_secret_file()
+            if not client_secret or not client_secret.exists():
+                print(f"[WARNING] YouTube client secret file not found in {client_secret}")
                 self.move_to_failed_upload(colorized_video_path)
                 return
-            
-            # Create YouTube uploader
             uploader = YouTubeUploader(client_secret)
-            
-            # Generate title based on original filename
             video_title = f"{original_video_path.stem} colorized enhanced restored"
-            
-            # Prepare description
             video_description = """I created this video using AI to restore and enhance a historical recording. My goal is to make these moments from the past feel more real and accessible so we never forget the people and stories they hold.
 
-This project is still a work in progress, and I'm sharing everything I'm learning on GitHub so others can get involved or do their own restorations. 
+This project is still a work in progress, and I'm sharing everything I'm learning on GitHub so others can get involved or do their own restorations.
 
-Check out the repository here to do it yourself: https://github.com/MikahNiehaus/full_restore
+Check out the repository here to do it yourself:
+github.com/MikahNiehaus/full_restore
 
 Check out my LinkedIn to learn more about me:
-https://www.linkedin.com/in/mikahniehaus/
+linkedin.com/in/mikahniehaus/
 
-Thanks for watching and let's keep history alive together."""
+Thanks for watching and let's keep history alive together.
+"""
 
             # Upload to YouTube
             video_id = uploader.upload_video(
                 str(colorized_video_path),
                 title=video_title,
                 description=video_description,
-                privacy_status="unlisted"  # Not publicly listed but accessible with link
+                privacy_status="public"  # Make video public by default
             )
             
             if video_id:
@@ -361,7 +435,6 @@ Thanks for watching and let's keep history alive together."""
             else:
                 print("[WARNING] YouTube upload failed")
                 self.move_to_failed_upload(colorized_video_path)
-                
         except Exception as e:
             print(f"[ERROR] YouTube upload error: {e}")
             traceback.print_exc()

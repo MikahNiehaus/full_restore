@@ -1,0 +1,51 @@
+{
+    "Dr. Martin Luther King Jr. I have a Dream Speech.mp4": {
+        "timestamp": "2025-05-30 20:54:52",
+        "status": "SUCCESS",
+        "message": "Uploaded to YouTube: https://youtu.be/lZ0OKr1XWAE"
+    },
+    "3 Second Test Video Blue copy.mp4": {
+        "audio": {
+            "timestamp": "2025-05-30 21:56:30",
+            "status": "WARNING",
+            "message": "Audio enhancement failed, using original audio"
+        },
+        "restore": {
+            "timestamp": "2025-05-30 21:50:52",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-05-30 21:50:52",
+            "status": "SUCCESS",
+            "message": ""
+        }
+    },
+    "3 Second Test Video Blue.mp4": {
+        "audio": {
+            "timestamp": "2025-05-30 21:52:20",
+            "status": "WARNING",
+            "message": "Audio enhancement failed, using original audio"
+        },
+        "restore": {
+            "timestamp": "2025-05-30 21:55:42",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-05-30 21:55:42",
+            "status": "SUCCESS",
+            "message": ""
+        }
+    },
+    "3 Second Test Video Blue_restored_colorized.mp4": {
+        "timestamp": "2025-05-30 21:55:44",
+        "status": "SUCCESS",
+        "message": "Uploaded to YouTube: https://youtu.be/4-QnqNAUazg"
+    },
+    "3 Second Test Video Blue copy_restored_colorized.mp4": {
+        "timestamp": "2025-05-30 21:50:54",
+        "status": "SUCCESS",
+        "message": "Uploaded to YouTube: https://youtu.be/-11fe09z8dE"
+    }
+}

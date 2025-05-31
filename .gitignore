@@ -1,3 +1,9 @@
+# Environment variables and secrets
+.env
+YouTubeApi/temp_client_secrets.json
+YouTubeApi/youtube_token.json
+YouTubeApi/client_secret_*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -32,6 +38,7 @@ var/
 debug.log
 
 # YouTube API credentials and tokens
+.env
 YouTubeApi/client_secret*.json
 YouTubeApi/youtube_token.json
 YouTubeApi/token.*.json
@@ -192,3 +199,4 @@ YouTubeApi/authorize.py
 YouTubeApi/simple_authorize.py
 YouTubeApi/upload_video.py
 YouTubeApi/youtube_uploader.py
+YouTubeApi/secrets_manager.py

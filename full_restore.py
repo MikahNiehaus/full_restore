@@ -29,6 +29,10 @@ import shutil
 import traceback
 from pathlib import Path
 from typing import Optional, List, Union
+import dotenv
+
+# Load environment variables from .env file
+dotenv.load_dotenv()
 import cv2
 from tqdm import tqdm
 import numpy as np
@@ -43,6 +47,7 @@ from deoldify.visualize import get_video_colorizer
 # Try to import YouTube uploader
 try:
     from YouTubeApi.youtube_uploader import YouTubeUploader
+    from YouTubeApi.secrets_manager import get_client_secrets_file
     YOUTUBE_UPLOADER_AVAILABLE = True
     print("[INFO] YouTube upload functionality is available")
 except ImportError:
@@ -375,16 +380,16 @@ class VideoProcessor:
                 
                 # Remove temporary video
                 if os.path.exists(temp_output_path):
-                    os.unlink(temp_output_path)
-            else:
-                # Just rename the video if no audio
-                shutil.move(str(temp_output_path), str(output_path))
-              # Move original video to processed directory
+                        os.unlink(temp_output_path)
+                else:
+                    # Just rename the video if no audio
+                    shutil.move(str(temp_output_path), str(output_path))
+                
+            # Move original video to processed directory
             processed_input = self.processed_dir / video_path.name
             shutil.move(str(video_path), str(processed_input))
             print(f"[INFO] Moved input video to: {processed_input}")
-            
-            # Upload to YouTube if available
+              # Upload to YouTube if available
             if YOUTUBE_UPLOADER_AVAILABLE:
                 try:
                     print("[INFO] Uploading video to YouTube...")
@@ -401,10 +406,12 @@ Check out the repository here to do it yourself: https://github.com/MikahNiehaus
 Check out my LinkedIn to learn more about me:
 https://www.linkedin.com/in/mikahniehaus/
 
-Thanks for watching and let's keep history alive together."""
+Thanks for watching and let's keep history alive together.
+
+#AI #History #VideoRestoration #DeepLearning #AIColorization #HistoricalFootage"""
                     
-                    # Get client secret file
-                    client_secret = Path(__file__).parent / "YouTubeApi" / "client_secret_681175603356-r8tuvdbp1gfpj56dptge8snpulhum933.apps.googleusercontent.com.json"
+                    # Get client secret file from environment variables or file
+                    client_secret = get_client_secrets_file()
                     
                     # Create uploader and upload video
                     if client_secret.exists():
@@ -421,7 +428,7 @@ Thanks for watching and let's keep history alive together."""
                         else:
                             print("[WARNING] YouTube upload failed")
                     else:
-                        print(f"[WARNING] YouTube client secret file not found at: {client_secret}")
+                        print(f"[WARNING] YouTube client secrets not found. Check your .env file.")
                 except Exception as e:
                     print(f"[WARNING] YouTube upload error: {e}")
                     traceback.print_exc()
@@ -436,7 +443,6 @@ Thanks for watching and let's keep history alive together."""
         finally:
             # Clean up temporary files
             self.cleanup_temp_files()
-    
     def cleanup_temp_files(self):
         """Clean up temporary files and directories"""
         print("[INFO] Cleaning up temporary files...")
@@ -449,6 +455,13 @@ Thanks for watching and let's keep history alive together."""
                 print(f"[WARNING] Failed to delete temporary file {file}: {e}")
                 
         for file in self.temp_colorized_dir.glob("*.*"):
+            try:
+                file.unlink()
+            except Exception as e:
+                print(f"[WARNING] Failed to delete temporary file {file}: {e}")
+                
+        # Clean restored frames directory
+        for file in self.temp_restored_dir.glob("*.*"):
             try:
                 file.unlink()
             except Exception as e:
