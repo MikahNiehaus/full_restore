@@ -422,7 +422,7 @@ linkedin.com/in/mikahniehaus/
 Thanks for watching and let's keep history alive together.
 """
             while True:
-                video_id = uploader.upload_video(
+                video_id, error_message = uploader.upload_video(
                     str(colorized_video_path),
                     title=video_title,
                     description=video_description,
@@ -432,27 +432,15 @@ Thanks for watching and let's keep history alive together.
                     print(f"[INFO] Successfully uploaded to YouTube: https://youtu.be/{video_id}")
                     self.move_to_uploaded(colorized_video_path)
                     break
+                elif error_message and 'exceeded the number of videos' in error_message.lower():
+                    print("[WARNING] YouTube upload quota exceeded. Waiting 1 hour before retrying...")
+                    self.log_json(colorized_video_path.name, "upload", "QUOTA_EXCEEDED", error_message)
+                    time.sleep(3600)
                 else:
-                    # Check logs for quota error
-                    last_log = None
-                    log_path = Path(__file__).parent / "YouTubeApi" / "logs.json"
-                    if log_path.exists():
-                        with open(log_path, 'r') as f:
-                            try:
-                                logs = json.load(f)
-                                video_logs = logs.get(colorized_video_path.name, {})
-                                for stage, entry in video_logs.items():
-                                    if 'exceeded the number of videos' in entry.get('message', ''):
-                                        last_log = entry
-                            except Exception:
-                                pass
-                    if last_log:
-                        print("[WARNING] YouTube upload quota exceeded. Waiting 1 hour before retrying...")
-                        time.sleep(3600)
-                    else:
-                        print("[WARNING] YouTube upload failed for another reason. Moving to failed_upload.")
-                        self.move_to_failed_upload(colorized_video_path)
-                        break
+                    print(f"[WARNING] YouTube upload failed for another reason: {error_message}")
+                    self.log_json(colorized_video_path.name, "upload", "ERROR", error_message or "Unknown error")
+                    self.move_to_failed_upload(colorized_video_path)
+                    break
         except Exception as e:
             print(f"[ERROR] YouTube upload error: {e}")
             traceback.print_exc()

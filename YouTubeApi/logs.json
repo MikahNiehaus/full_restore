@@ -50,7 +50,34 @@
     },
     "aaaa.mp4": {
         "audio": {
-            "timestamp": "2025-05-30 22:04:51",
+            "timestamp": "2025-05-30 22:15:27",
+            "status": "WARNING",
+            "message": "Audio enhancement failed, using original audio"
+        },
+        "restore": {
+            "timestamp": "2025-05-30 22:18:39",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-05-30 22:18:39",
+            "status": "SUCCESS",
+            "message": ""
+        }
+    },
+    "aaaa_restored_colorized.mp4": {
+        "timestamp": "2025-05-30 22:18:39",
+        "status": "ERROR",
+        "message": "YouTube upload failed: The user has exceeded the number of videos they may upload.",
+        "upload": {
+            "timestamp": "2025-05-30 22:18:39",
+            "status": "QUOTA_EXCEEDED",
+            "message": "The user has exceeded the number of videos they may upload."
+        }
+    },
+    "Malcolm X Interview in Providence (1961).mp4": {
+        "audio": {
+            "timestamp": "2025-05-30 22:08:35",
             "status": "WARNING",
             "message": "Audio enhancement failed, using original audio"
         }
