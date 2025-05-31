@@ -398,7 +398,8 @@ class VideoWatchdog:
         return None
 
     def upload_to_youtube(self, original_video_path: Path, colorized_video_path: Path):
-        """Upload processed video to YouTube"""
+        """Upload processed video to YouTube, retrying every hour if quota exceeded."""
+        import time
         try:
             print("[INFO] Uploading video to YouTube...")
             client_secret = self.get_client_secret_file()
@@ -420,21 +421,38 @@ linkedin.com/in/mikahniehaus/
 
 Thanks for watching and let's keep history alive together.
 """
-
-            # Upload to YouTube
-            video_id = uploader.upload_video(
-                str(colorized_video_path),
-                title=video_title,
-                description=video_description,
-                privacy_status="public"  # Make video public by default
-            )
-            
-            if video_id:
-                print(f"[INFO] Successfully uploaded to YouTube: https://youtu.be/{video_id}")
-                self.move_to_uploaded(colorized_video_path)
-            else:
-                print("[WARNING] YouTube upload failed")
-                self.move_to_failed_upload(colorized_video_path)
+            while True:
+                video_id = uploader.upload_video(
+                    str(colorized_video_path),
+                    title=video_title,
+                    description=video_description,
+                    privacy_status="public"  # Make video public by default
+                )
+                if video_id:
+                    print(f"[INFO] Successfully uploaded to YouTube: https://youtu.be/{video_id}")
+                    self.move_to_uploaded(colorized_video_path)
+                    break
+                else:
+                    # Check logs for quota error
+                    last_log = None
+                    log_path = Path(__file__).parent / "YouTubeApi" / "logs.json"
+                    if log_path.exists():
+                        with open(log_path, 'r') as f:
+                            try:
+                                logs = json.load(f)
+                                video_logs = logs.get(colorized_video_path.name, {})
+                                for stage, entry in video_logs.items():
+                                    if 'exceeded the number of videos' in entry.get('message', ''):
+                                        last_log = entry
+                            except Exception:
+                                pass
+                    if last_log:
+                        print("[WARNING] YouTube upload quota exceeded. Waiting 1 hour before retrying...")
+                        time.sleep(3600)
+                    else:
+                        print("[WARNING] YouTube upload failed for another reason. Moving to failed_upload.")
+                        self.move_to_failed_upload(colorized_video_path)
+                        break
         except Exception as e:
             print(f"[ERROR] YouTube upload error: {e}")
             traceback.print_exc()
