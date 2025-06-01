@@ -44,6 +44,7 @@ YouTubeApi/youtube_token.json
 YouTubeApi/token.*.json
 YouTubeApi/*.pickle
 YouTubeApi/oauth2.json
+.wav
 
 # Unit test / coverage reports
 htmlcov/
