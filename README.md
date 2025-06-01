@@ -140,3 +140,64 @@ python full_restore.py --no-restore-frames
 - Higher render_factor values provide better quality but require more GPU memory
 - If you encounter CUDA out of memory errors, try reducing the render_factor value
 - Processing large videos can take significant time
+
+# ffmpeg Setup Helper Scripts
+
+This collection of scripts helps you set up and configure ffmpeg on your Windows system.
+
+## PowerShell Execution Policy
+
+Before running the scripts, you may need to adjust your PowerShell execution policy. By default, Windows restricts running unsigned PowerShell scripts for security reasons. You have several options:
+
+### Option 1: Run scripts in the current session only
+Open PowerShell as Administrator and run:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+```
+This will allow script execution only in the current PowerShell session.
+
+### Option 2: Temporarily bypass the execution policy for a single script
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_ffmpeg.ps1
+```
+
+### Option 3: Change execution policy permanently (less secure)
+Open PowerShell as Administrator and run:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+This allows local scripts to run without digital signatures.
+
+## Available Scripts
+
+### 1. `find_ffmpeg.ps1`
+Searches your system for existing ffmpeg installations.
+- Run: `.\find_ffmpeg.ps1`
+
+### 2. `install_ffmpeg.ps1`
+Downloads and installs ffmpeg automatically.
+- Run: `.\install_ffmpeg.ps1`
+
+### 3. `add_ffmpeg_to_path.ps1`
+Adds ffmpeg to your PATH temporarily (for the current PowerShell session).
+- Run: `.\add_ffmpeg_to_path.ps1`
+
+### 4. `add_ffmpeg_permanent.ps1`
+Adds ffmpeg to your system PATH permanently.
+- Run as Administrator: `.\add_ffmpeg_permanent.ps1`
+
+## Manual ffmpeg Installation
+
+If you prefer to install ffmpeg manually:
+
+1. Download ffmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) (use the Windows builds)
+2. Extract the zip file to a location like `C:\ffmpeg`
+3. Add the bin folder to your PATH:
+   - Press Win+X and select "System"
+   - Click "Advanced system settings"
+   - Click "Environment Variables"
+   - Under "System variables", find "Path" and click "Edit"
+   - Click "New" and add the path to the ffmpeg bin folder (e.g., `C:\ffmpeg\bin`)
+   - Click "OK" on all windows
+4. Restart any open command prompts or PowerShell windows
+5. Verify installation with `ffmpeg -version`

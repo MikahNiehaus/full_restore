@@ -77,9 +77,26 @@
     },
     "Malcolm X Interview in Providence (1961).mp4": {
         "audio": {
-            "timestamp": "2025-05-30 22:08:35",
+            "timestamp": "2025-05-31 00:01:07",
             "status": "WARNING",
-            "message": "Audio enhancement failed, using original audio"
+            "message": "No audio track found or extraction failed"
+        },
+        "restore": {
+            "timestamp": "2025-05-31 23:34:53",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-05-31 23:34:53",
+            "status": "SUCCESS",
+            "message": ""
+        }
+    },
+    "Malcolm X Speeches & Interviews 1960-1965.mp4": {
+        "audio": {
+            "timestamp": "2025-05-31 23:35:38",
+            "status": "WARNING",
+            "message": "No audio track found or extraction failed"
         }
     }
 }
