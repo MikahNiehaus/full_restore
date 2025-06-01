@@ -178,18 +178,41 @@ class AudioEnhancer:
         nyquist = sample_rate / 2
         low = 250 / nyquist
         high = 3800 / nyquist
-        b, a = signal.butter(4, [low, high], btype='band')
         
-        # Apply filter
-        equalized_audio = signal.filtfilt(b, a, audio_data)
+        try:
+            # First try standard 4th order filter
+            b, a = signal.butter(4, [low, high], btype='band')
+            # Apply filter
+            equalized_audio = signal.filtfilt(b, a, audio_data)
+        except ValueError as e:
+            # If we get an error about input vector length, try a lower order filter
+            if "The length of the input vector x must be greater than padlen" in str(e):
+                self.log("[INFO] Audio too short for standard filter, using lower order filter...")
+                try:
+                    # Try a 2nd order filter with less padding requirements
+                    b, a = signal.butter(2, [low, high], btype='band')
+                    equalized_audio = signal.filtfilt(b, a, audio_data)
+                except ValueError:
+                    # If that still fails, just return the original audio
+                    self.log("[INFO] Audio too short for EQ filters, returning original audio...")
+                    return audio_data
+            else:
+                # If it's a different error, re-raise it
+                raise
         
-        # Slightly boost high frequencies for clarity
-        high_boost = 3000 / nyquist
-        b_high, a_high = signal.butter(4, high_boost, btype='high')
-        high_boosted = signal.filtfilt(b_high, a_high, equalized_audio) * 0.3
-        
-        # Mix with original signal
-        equalized_audio = equalized_audio + high_boosted
+        # Try to apply high frequency boost if audio is long enough
+        try:
+            # Slightly boost high frequencies for clarity
+            high_boost = 3000 / nyquist
+            b_high, a_high = signal.butter(4, high_boost, btype='high')
+            high_boosted = signal.filtfilt(b_high, a_high, equalized_audio) * 0.3
+            
+            # Mix with original signal
+            equalized_audio = equalized_audio + high_boosted
+        except ValueError:
+            # If high boost fails, just use the bandpass filtered audio
+            self.log("[INFO] Skipping high frequency boost for short audio...")
+            pass
         
         return equalized_audio
     
@@ -209,16 +232,30 @@ class AudioEnhancer:
             audio_data, sample_rate = self.load_audio(input_path)
             if audio_data is None:
                 return False
+                
+            # Check if audio is too short (less than 100ms)
+            if len(audio_data) < sample_rate / 10:
+                self.log("[WARNING] Audio is very short, may have limited enhancement effects")
             
-            # Apply enhancements
-            # Step 1: Noise reduction
-            audio_data = self.reduce_noise(audio_data, sample_rate)
+            try:
+                # Step 1: Noise reduction
+                audio_data = self.reduce_noise(audio_data, sample_rate)
+            except Exception as e:
+                self.log(f"[WARNING] Noise reduction failed: {e}, using original audio")
+                # Reload the original audio data
+                audio_data, sample_rate = self.load_audio(input_path)
             
-            # Step 2: Equalization for better voice/music clarity
-            audio_data = self.apply_equalization(audio_data, sample_rate)
+            try:
+                # Step 2: Equalization for better voice/music clarity
+                audio_data = self.apply_equalization(audio_data, sample_rate)
+            except Exception as e:
+                self.log(f"[WARNING] Equalization failed: {e}, using previously processed audio")
             
-            # Step 3: Normalize audio levels
-            audio_data = self.normalize_audio(audio_data)
+            try:
+                # Step 3: Normalize audio levels
+                audio_data = self.normalize_audio(audio_data)
+            except Exception as e:
+                self.log(f"[WARNING] Normalization failed: {e}, using previously processed audio")
             
             # Save enhanced audio
             return self.save_audio(output_path, audio_data, sample_rate)
@@ -226,7 +263,14 @@ class AudioEnhancer:
         except Exception as e:
             print(f"[ERROR] Audio enhancement failed: {e}")
             traceback.print_exc()
-            return False
+            # If enhancement completely fails, try to just copy the original file
+            try:
+                self.log("[INFO] Attempting to copy original audio as fallback...")
+                import shutil
+                shutil.copy(input_path, output_path)
+                return os.path.exists(output_path)
+            except:
+                return False
 
 def extract_audio(video_path, output_path):
     """

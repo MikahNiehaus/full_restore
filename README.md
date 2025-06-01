@@ -201,3 +201,52 @@ If you prefer to install ffmpeg manually:
    - Click "OK" on all windows
 4. Restart any open command prompts or PowerShell windows
 5. Verify installation with `ffmpeg -version`
+
+## Common Warnings and Troubleshooting
+
+### NumExpr and pkg_resources Warnings
+
+You may see warnings like:
+
+```
+NumExpr defaulting to 12 threads.
+C:\Users\...\pkg_resources is deprecated as an API...
+```
+
+These are normal and can be safely ignored:
+
+- **NumExpr defaulting to X threads**: This is just informational, showing that NumExpr (a numerical expression evaluator) is using multiple CPU threads for better performance.
+
+- **pkg_resources is deprecated**: This is a warning from one of the dependencies (fastai) using an older Python packaging API. This doesn't affect functionality and is just a notice for developers.
+
+These warnings are related to the underlying libraries and don't indicate problems with your setup or the application's functionality.
+
+### Audio Enhancement Errors
+
+If you see an error like:
+```
+[ERROR] Audio enhancement failed: The length of the input vector x must be greater than padlen, which is 27.
+[WARNING] Audio enhancement failed, using original audio
+```
+
+This means:
+- The audio in the video is too short or empty for the enhancement algorithms
+- The system is automatically falling back to using the original audio
+- Your video will still be processed with the original audio (no enhancement)
+
+This typically happens with very short videos or videos with no significant audio content. Possible solutions:
+
+1. **For videos with very short audio**: 
+   - Use the `--no-audio-enhance` flag to skip audio enhancement entirely
+   - If you need to process multiple short videos, consider batch processing:
+   ```
+   python full_restore.py --no-audio-enhance
+   ```
+
+2. **To modify the audio processing parameters**:
+   You can edit `audio_enhancer.py` to make the equalizer more tolerant of short audio files:
+   - Find the `apply_equalization` method
+   - Reduce the filter order (e.g., change order=4 to order=2)
+   - Or conditionally skip equalization for very short audio files
+
+Most videos should process without this error, as the system will automatically handle longer audio tracks.

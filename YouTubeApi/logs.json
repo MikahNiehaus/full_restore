@@ -98,5 +98,19 @@
             "status": "WARNING",
             "message": "No audio track found or extraction failed"
         }
+    },
+    "Muhammad Ali on the Vietnam war and racism..mp4": {
+        "audio": {
+            "timestamp": "2025-06-01 00:16:23",
+            "status": "WARNING",
+            "message": "Audio enhancement failed, using original audio"
+        }
+    },
+    "Chairman Fred Hampton Speech Collection.mp4": {
+        "audio": {
+            "timestamp": "2025-06-01 00:22:05",
+            "status": "SUCCESS",
+            "message": ""
+        }
     }
 }
