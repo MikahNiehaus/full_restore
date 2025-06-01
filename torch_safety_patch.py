@@ -18,9 +18,15 @@ original_torch_load = torch.load
 
 def patched_torch_load(f, map_location=None, pickle_module=None, **pickle_load_args):
     """Patched version of torch.load that forces weights_only=False for DeOldify models"""
-    # Force weights_only to False to ensure compatibility with DeOldify models
-    if 'weights_only' not in pickle_load_args:
-        pickle_load_args['weights_only'] = False
+    # Ensure pickle_module is not None, default to built-in pickle if necessary
+    if pickle_module is None:
+        import pickle
+        pickle_module = pickle
+
+    # Remove unsupported arguments like 'weights_only'
+    if 'weights_only' in pickle_load_args:
+        del pickle_load_args['weights_only']
+
     return original_torch_load(f, map_location, pickle_module, **pickle_load_args)
 
 # Replace torch.load with our patched version
