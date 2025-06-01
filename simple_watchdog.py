@@ -181,6 +181,7 @@ class VideoWatchdog:
         temp_dirs = [
             Path('temp_video_frames'),
             Path('temp_restored_frames'),
+            Path('temp_enhanced_frames'),
             Path('temp_colorized_frames')
         ]
 
@@ -225,10 +226,11 @@ class VideoWatchdog:
         output_path = None
         temp_frames_dir = Path('temp_video_frames')
         temp_restored_dir = Path('temp_restored_frames')
+        temp_enhanced_dir = Path('temp_enhanced_frames')
         temp_colorized_dir = Path('temp_colorized_frames')
 
         # Ensure temp directories exist
-        for temp_dir in [temp_frames_dir, temp_restored_dir, temp_colorized_dir]:
+        for temp_dir in [temp_frames_dir, temp_restored_dir, temp_enhanced_dir, temp_colorized_dir]:
             temp_dir.mkdir(exist_ok=True)
             
         # Extract frames if image restoration is available
@@ -277,6 +279,8 @@ class VideoWatchdog:
         # RESTORE & COLORIZE
         restore_status = "SUCCESS"
         restore_message = ""
+        enhance_status = "SUCCESS"
+        enhance_message = ""
         colorize_status = "SUCCESS"
         colorize_message = ""
         if IMAGE_RESTORER_AVAILABLE:
@@ -316,13 +320,22 @@ class VideoWatchdog:
                     restore_message = f"Image restoration error: {e}"
                     print(f"[ERROR] Error during image restoration: {e}")
                 
+                # Enhance frames (Real-ESRGAN)
+                print("[INFO] Enhancing restored frames with Real-ESRGAN (super-resolution)...")
+                try:
+                    restorer.enhance_frames(temp_restored_dir, temp_enhanced_dir)
+                except Exception as e:
+                    enhance_status = "ERROR"
+                    enhance_message = f"Enhancement error: {e}"
+                    print(f"[ERROR] Error during enhancement: {e}")
+                
                 # Set up DeOldify colorizer for processed frames
                 print("[INFO] Setting up DeOldify colorizer...")
                 colorizer = get_video_colorizer(render_factor=40)  # Maximum quality
                 
-                # Colorize restored frames
-                print("[INFO] Colorizing restored frames with DeOldify...")
-                frame_files = sorted(list(temp_restored_dir.glob('*.png')))
+                # Colorize enhanced frames
+                print("[INFO] Colorizing enhanced frames with DeOldify...")
+                frame_files = sorted(list(temp_enhanced_dir.glob('*.png')))
                 for i, frame_path in enumerate(tqdm(frame_files, desc="Colorizing frames")):
                     vis = colorizer.vis
                     try:
@@ -338,7 +351,7 @@ class VideoWatchdog:
                         colorize_status = "ERROR"
                         colorize_message = f"Colorization error: {e}"
                         print(f"[ERROR] Error during colorization: {e}")
-                output_path = self.outputs_dir / f"{video_path.stem}_restored_colorized.mp4"
+                output_path = self.outputs_dir / f"{video_path.stem}_restored_enhanced_colorized.mp4"
                 print("[INFO] Reassembling video with enhanced frames...")
                 self.reassemble_video(temp_colorized_dir, enhanced_audio_path or temp_audio_path, output_path, fps)
             except Exception as e:
@@ -349,6 +362,7 @@ class VideoWatchdog:
                 frames_extracted = False
         
         self.log_json(video_path.name, "restore", restore_status, restore_message)
+        self.log_json(video_path.name, "enhance", enhance_status, enhance_message)
         self.log_json(video_path.name, "colorize", colorize_status, colorize_message)
 
         # If image restoration failed or is not available, use standard DeOldify directly
@@ -476,6 +490,3 @@ Thanks for watching and let's keep history alive together.
                 print(f"[ERROR] Watchdog error: {e}")
                 traceback.print_exc()
                 time.sleep(self.poll_interval)  # Wait before retrying
-
-if __name__ == '__main__':
-    VideoWatchdog().run()
