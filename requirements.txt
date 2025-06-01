@@ -26,6 +26,7 @@ fastprogress
 beautifulsoup4
 # Video/audio handling
 moviepy
+yt-dlp
 # AI Upscaling
 realesrgan
 # System
@@ -40,5 +41,16 @@ python-dotenv
 # Terminal and utility
 colorama
 argparse
+ipython
 # ---
 # NOTE: You must have ffmpeg installed and on your system PATH for full functionality.
+# 
+# To install all requirements:
+# pip install -r requirements.txt
+#
+# For CUDA-enabled environments, install PyTorch with CUDA support:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# For YouTube API:
+# 1. Create client_secret_*.json in YouTubeApi/ directory
+# 2. Run authorize_youtube.bat to set up credentials
