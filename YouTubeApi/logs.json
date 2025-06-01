@@ -77,9 +77,24 @@
     },
     "Malcolm X Interview in Providence (1961).mp4": {
         "audio": {
-            "timestamp": "2025-05-30 22:08:35",
+            "timestamp": "2025-06-01 04:47:10",
             "status": "WARNING",
             "message": "Audio enhancement failed, using original audio"
+        },
+        "restore": {
+            "timestamp": "2025-06-01 13:20:20",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-06-01 13:20:20",
+            "status": "SUCCESS",
+            "message": ""
         }
+    },
+    "Malcolm X Interview in Providence (1961)_restored_colorized.mp4": {
+        "timestamp": "2025-06-01 13:20:44",
+        "status": "SUCCESS",
+        "message": "Uploaded to YouTube: https://youtu.be/NwFHXKH0gxk"
     }
 }

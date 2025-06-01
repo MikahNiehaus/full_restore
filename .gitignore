@@ -200,3 +200,4 @@ YouTubeApi/simple_authorize.py
 YouTubeApi/upload_video.py
 YouTubeApi/youtube_uploader.py
 YouTubeApi/secrets_manager.py
+temp_audio.wav

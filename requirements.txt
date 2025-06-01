@@ -48,8 +48,30 @@ ipython
 # To install all requirements:
 # pip install -r requirements.txt
 #
-# For CUDA-enabled environments, install PyTorch with CUDA support:
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CUDA SETUP INSTRUCTIONS:
+#
+# 1. Ensure you have compatible NVIDIA drivers installed
+#    Download latest drivers from: https://www.nvidia.com/Download/index.aspx
+#
+# 2. Install PyTorch with appropriate CUDA version:
+#    - For CUDA 12.1 (newest):
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+#    - For CUDA 11.8 (more compatible with older GPUs):
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+#    - For CPU-only (fallback, not recommended):
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+#
+# 3. Test your CUDA installation:
+#    python test_cuda.py
+#
+# 4. If you have CUDA issues, try:
+#    - Updating NVIDIA drivers
+#    - Installing CUDA Toolkit: https://developer.nvidia.com/cuda-downloads
+#    - Checking GPU compatibility: https://developer.nvidia.com/cuda-gpus
+#
+# Note: Use the '--cpu' flag with simple_run.py to force CPU mode when needed
 #
 # For YouTube API:
 # 1. Create client_secret_*.json in YouTubeApi/ directory
