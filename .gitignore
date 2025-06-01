@@ -202,3 +202,7 @@ YouTubeApi/upload_video.py
 YouTubeApi/youtube_uploader.py
 YouTubeApi/secrets_manager.py
 temp_audio.wav
+temp_audio.wav
+/venv310
+*.wav
+temp_audio_enhanced.wav

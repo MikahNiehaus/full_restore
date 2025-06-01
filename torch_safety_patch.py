@@ -9,8 +9,9 @@ import torch
 import torch.serialization
 import builtins
 
-# Add the necessary globals to PyTorch's safe list
-torch.serialization.add_safe_globals([slice, builtins.slice])
+# Add the necessary globals to PyTorch's safe list (if available)
+if hasattr(torch.serialization, 'add_safe_globals'):
+    torch.serialization.add_safe_globals([slice, getattr(builtins, 'slice', slice)])
 
 # Also add a monkey patch for torch.load to always use weights_only=False for DeOldify
 original_torch_load = torch.load

@@ -218,52 +218,58 @@ class AudioEnhancer:
     
     def enhance_audio(self, input_path, output_path):
         """
-        Perform full audio enhancement process
-        
-        Args:
-            input_path (str): Path to input audio file
-            output_path (str): Path to save enhanced audio
-            
-        Returns:
-            bool: True if successful, False otherwise
+        Perform full audio enhancement process, tuned for old black and white video:
+        - Aggressive noise reduction
+        - Strong bandpass EQ for speech
+        - Normalization
+        - Gentle compression (if possible)
         """
         try:
             # Load audio
             audio_data, sample_rate = self.load_audio(input_path)
             if audio_data is None:
                 return False
-                
-            # Check if audio is too short (less than 100ms)
-            if len(audio_data) < sample_rate / 10:
-                self.log("[WARNING] Audio is very short, may have limited enhancement effects")
-            
+
+            # Step 1: Aggressive noise reduction
             try:
-                # Step 1: Noise reduction
-                audio_data = self.reduce_noise(audio_data, sample_rate)
+                audio_data = self.reduce_noise(audio_data, sample_rate, reduction_strength=0.95)
             except Exception as e:
                 self.log(f"[WARNING] Noise reduction failed: {e}, using original audio")
-                # Reload the original audio data
                 audio_data, sample_rate = self.load_audio(input_path)
-            
+
+            # Step 2: Strong bandpass EQ for speech (250Hz-3800Hz)
             try:
-                # Step 2: Equalization for better voice/music clarity
                 audio_data = self.apply_equalization(audio_data, sample_rate)
             except Exception as e:
                 self.log(f"[WARNING] Equalization failed: {e}, using previously processed audio")
-            
+
+            # Step 3: Normalize audio levels
             try:
-                # Step 3: Normalize audio levels
-                audio_data = self.normalize_audio(audio_data)
+                audio_data = self.normalize_audio(audio_data, target_level=-2.0)
             except Exception as e:
                 self.log(f"[WARNING] Normalization failed: {e}, using previously processed audio")
-            
+
+            # Step 4: Gentle dynamic range compression (optional, if available)
+            try:
+                import scipy.signal
+                # Simple compressor: soft knee, ratio 2:1 above -18dB
+                threshold = 10 ** (-18 / 20)
+                ratio = 2.0
+                def compressor(x):
+                    absx = np.abs(x)
+                    over = absx > threshold
+                    x[over] = np.sign(x[over]) * (threshold + (absx[over] - threshold) / ratio)
+                    return x
+                audio_data = compressor(audio_data)
+                self.log("[INFO] Applied gentle compression.")
+            except Exception as e:
+                self.log(f"[INFO] Compression skipped: {e}")
+
             # Save enhanced audio
             return self.save_audio(output_path, audio_data, sample_rate)
-            
         except Exception as e:
             print(f"[ERROR] Audio enhancement failed: {e}")
             traceback.print_exc()
-            # If enhancement completely fails, try to just copy the original file
             try:
                 self.log("[INFO] Attempting to copy original audio as fallback...")
                 import shutil
@@ -326,6 +332,50 @@ def mux_audio_to_video(video_path, audio_path, output_path):
         print(f"[ERROR] Audio muxing failed: {e}")
         traceback.print_exc()
         return False
+
+def process_mp4_audio(input_mp4, output_mp4=None, temp_dir='temp_audio'):
+    """
+    Extract, enhance, and mux audio for an mp4 file.
+    
+    Args:
+        input_mp4 (str): Path to input mp4
+        output_mp4 (str): Path to output mp4 (if None, will use input_mp4 name with _enhanced)
+        temp_dir (str): Directory for temp audio files
+        
+    Returns:
+        str: Path to output mp4 with enhanced audio
+    """
+    import shutil
+    os.makedirs(temp_dir, exist_ok=True)
+    base = Path(input_mp4).stem
+    temp_audio = Path(temp_dir) / f"{base}_orig.wav"
+    enhanced_audio = Path(temp_dir) / f"{base}_enhanced.wav"
+    
+    # Extract audio
+    ok = extract_audio(input_mp4, str(temp_audio))
+    if not ok:
+        print("[ERROR] Could not extract audio from video.")
+        return None
+    
+    # Enhance audio
+    enhancer = AudioEnhancer()
+    ok = enhancer.enhance_audio(str(temp_audio), str(enhanced_audio))
+    if not ok:
+        print("[WARNING] Audio enhancement failed, using original audio.")
+        final_audio = temp_audio
+    else:
+        final_audio = enhanced_audio
+    
+    # Mux back to video
+    if output_mp4 is None:
+        output_mp4 = str(Path(input_mp4).with_name(f"{base}_audiofixed.mp4"))
+    ok = mux_audio_to_video(input_mp4, str(final_audio), output_mp4)
+    if ok:
+        print(f"[INFO] Output video with improved audio: {output_mp4}")
+        return output_mp4
+    else:
+        print("[ERROR] Failed to mux audio back to video.")
+        return None
 
 def main():
     # Parse command line arguments

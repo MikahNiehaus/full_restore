@@ -38,13 +38,17 @@ class ImageRestorer:
         """
         self.models_dir = Path(models_dir)
         
-        # Set device (GPU if available, otherwise CPU)
+        # Always try GPU first, fallback to CPU if not available
         if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+                print("[INFO] ImageRestorer: Using GPU (cuda)")
+            else:
+                self.device = torch.device('cpu')
+                print("[WARNING] ImageRestorer: CUDA not available, using CPU fallback")
         else:
             self.device = device
-            
-        print(f"[INFO] Image restorer using device: {self.device}")
+            print(f"[INFO] ImageRestorer: Using user-specified device: {self.device}")
         
         # Initialize models
         self.models_loaded = False
@@ -200,7 +204,7 @@ class ImageRestorer:
             print(f"[WARNING] Super-resolution failed: {e}")
             return image
     
-    def restore_image(self, image_path, output_path=None, scale=2.0):
+    def restore_image(self, image_path, output_path=None, scale=2.0, log_pipeline=True):
         """
         Restore an image using multiple techniques
         
@@ -227,8 +231,6 @@ class ImageRestorer:
             if image.shape[0] < 100 or image.shape[1] < 100:
                 print("[WARNING] Image too small for full restoration pipeline")
                 return image
-                
-            print("[INFO] Applying restoration pipeline...")
             
             # 1. Remove scratches and artifacts
             image = self._remove_scratches(image)
@@ -260,14 +262,15 @@ class ImageRestorer:
             if isinstance(image_path, str) or isinstance(image_path, Path):
                 return cv2.imread(str(image_path))
             return image_path
-            
-    def restore_frames(self, input_dir, output_dir):
+    
+    def restore_frames(self, input_dir, output_dir, batch_size=32):
         """
-        Restore all frames in a directory
+        Restore all frames in a directory in batches for efficiency.
         
         Args:
             input_dir: Directory containing input frames
             output_dir: Directory to save restored frames
+            batch_size: Number of frames to process in a batch (default: 32)
             
         Returns:
             list: Paths to restored frames
@@ -277,23 +280,80 @@ class ImageRestorer:
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Find all image files
-        image_files = sorted([f for f in input_dir.glob('*.png') or input_dir.glob('*.jpg')])
+        image_files = sorted(list(input_dir.glob('*.png')) + list(input_dir.glob('*.jpg')))
         
         if not image_files:
             print(f"[WARNING] No image files found in {input_dir}")
             return []
-            
-        print(f"[INFO] Restoring {len(image_files)} frames...")
-        restored_paths = []
         
-        # Process each frame
-        for img_path in tqdm(image_files, desc="Restoring frames"):
-            output_path = output_dir / img_path.name
-            self.restore_image(img_path, output_path)
-            restored_paths.append(output_path)
-            
+        print(f"[INFO] Restoring {len(image_files)} frames in batches of {batch_size}...")
+        restored_paths = []
+        for i in tqdm(range(0, len(image_files), batch_size), desc="Restoring frames"):
+            batch_files = image_files[i:i+batch_size]
+            batch_images = []
+            for img_path in batch_files:
+                img = cv2.imread(str(img_path))
+                if img is not None:
+                    batch_images.append((img_path, img))
+                else:
+                    print(f"[WARNING] Failed to load image: {img_path}")
+            # Only log once per batch
+            if batch_images:
+                self.restore_image(batch_images[0][1], None, log_pipeline=True)
+                # Actually restore all images in batch, but only log for the first
+                for img_path, img in batch_images:
+                    restored = self.restore_image(img, None, log_pipeline=False)
+                    output_path = output_dir / img_path.name
+                    cv2.imwrite(str(output_path), restored)
+                    restored_paths.append(output_path)
         print(f"[INFO] Restored {len(restored_paths)} frames to {output_dir}")
         return restored_paths
+    
+    def enhance_frames(self, input_dir, output_dir, batch_size=32, outscale=2):
+        """
+        Enhance all frames in a directory using Real-ESRGAN super-resolution only.
+        
+        Args:
+            input_dir: Directory containing input frames
+            output_dir: Directory to save enhanced frames
+            batch_size: Number of frames to process in a batch (default: 32)
+            outscale: Upscale factor (default: 2)
+            
+        Returns:
+            list: Paths to enhanced frames
+        """
+        if not self.models_loaded:
+            print("[WARNING] Super-resolution models not loaded, skipping enhancement")
+            return []
+
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find all image files
+        image_files = sorted(list(input_dir.glob('*.png')) + list(input_dir.glob('*.jpg')))
+        if not image_files:
+            print(f"[WARNING] No image files found in {input_dir}")
+            return []
+
+        print(f"[INFO] Enhancing {len(image_files)} frames with Real-ESRGAN in batches of {batch_size}...")
+        enhanced_paths = []
+        for i in tqdm(range(0, len(image_files), batch_size), desc="Enhancing frames"):
+            batch_files = image_files[i:i+batch_size]
+            for img_path in batch_files:
+                img = cv2.imread(str(img_path))
+                if img is not None:
+                    try:
+                        output, _ = self.sr_enhancer.enhance(img, outscale=outscale)
+                        output_path = output_dir / img_path.name
+                        cv2.imwrite(str(output_path), output)
+                        enhanced_paths.append(output_path)
+                    except Exception as e:
+                        print(f"[WARNING] Enhancement failed for {img_path}: {e}")
+                else:
+                    print(f"[WARNING] Failed to load image: {img_path}")
+        print(f"[INFO] Enhanced {len(enhanced_paths)} frames to {output_dir}")
+        return enhanced_paths
 
 def restore_image(image_path, output_path=None):
     """
@@ -315,7 +375,7 @@ if __name__ == "__main__":
     parser.add_argument("input", help="Input image file or directory")
     parser.add_argument("--output", "-o", help="Output image file or directory")
     parser.add_argument("--device", "-d", choices=["cuda", "cpu"], help="Device to use (cuda/cpu)")
-    
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for frame restoration (default: 32)")
     args = parser.parse_args()
     
     # Determine device
@@ -330,7 +390,7 @@ if __name__ == "__main__":
     input_path = Path(args.input)
     if input_path.is_dir():
         output_dir = args.output if args.output else input_path.parent / (input_path.name + "_restored")
-        restorer.restore_frames(input_path, output_dir)
+        restorer.restore_frames(input_path, output_dir, batch_size=args.batch_size)
     else:
         output_path = args.output if args.output else input_path.parent / (input_path.stem + "_restored" + input_path.suffix)
         restorer.restore_image(input_path, output_path)
