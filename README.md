@@ -28,7 +28,28 @@ A comprehensive video restoration and colorization pipeline using DeOldify with 
 pip install -r requirements.txt
 ```
 
-2. Install FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) or using your package manager
+2. Install FFmpeg:
+
+   ### Windows:
+   - Download the FFmpeg build from [ffmpeg.org](https://ffmpeg.org/download.html) or [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (recommended: git-full build)
+   - Extract the zip file to a permanent location (e.g., `C:\Program Files\ffmpeg`)
+   - Add FFmpeg to your system PATH:
+     - Right-click on "This PC" or "My Computer" and select "Properties"
+     - Click on "Advanced system settings"
+     - Click on "Environment Variables"
+     - Under "System variables", find the "Path" variable, select it and click "Edit"
+     - Click "New" and add the path to the FFmpeg `bin` folder (e.g., `C:\Program Files\ffmpeg\bin`)
+     - Click "OK" on all dialog boxes
+   - Verify installation by opening a new command prompt and typing: `ffmpeg -version`
+
+   ### macOS:
+   - Using Homebrew: `brew install ffmpeg`
+   - Verify installation: `ffmpeg -version`
+
+   ### Linux:
+   - Ubuntu/Debian: `sudo apt update && sudo apt install ffmpeg`
+   - CentOS/RHEL: `sudo yum install ffmpeg ffmpeg-devel`
+   - Verify installation: `ffmpeg -version`
 
 ## Usage
 
