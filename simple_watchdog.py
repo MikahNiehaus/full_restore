@@ -429,7 +429,20 @@ class VideoWatchdog:
                 self.move_to_failed_upload(colorized_video_path)
                 return
             uploader = YouTubeUploader(client_secret)
-            video_title = f"{original_video_path.stem} colorized enhanced restored"
+            # Sanitize video title for YouTube (remove problematic characters)
+            import re
+            def sanitize_title(title):
+                # Replace curly quotes and dashes with ASCII equivalents
+                title = title.replace('‘', "'").replace('’', "'")
+                title = title.replace('“', '"').replace('”', '"')
+                title = title.replace('–', '-').replace('—', '-')
+                # Remove any other non-ASCII characters
+                title = re.sub(r'[^\x00-\x7F]+', '', title)
+                # Collapse whitespace
+                title = re.sub(r'\s+', ' ', title).strip()
+                return title
+
+            video_title = sanitize_title(f"{original_video_path.stem} colorized enhanced restored")
             video_description = """I created this video using AI to restore and enhance a historical recording. My goal is to make these moments from the past feel more real and accessible so we never forget the people and stories they hold.
 
 This project is still a work in progress, and I'm sharing everything I'm learning on GitHub so others can get involved or do their own restorations.
