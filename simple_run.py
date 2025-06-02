@@ -54,6 +54,7 @@ def show_help():
     print("Options:")
     print("  --help     Show this help message and exit")
     print("  --cpu      Force CPU mode even if CUDA/GPU is available")
+    print("  --do-enhance   Enable Real-ESRGAN enhancement (default: off)")
     print("\nUsage:")
     print("  python simple_run.py         # Run with GPU acceleration if available")
     print("  python simple_run.py --cpu   # Force CPU mode")
@@ -73,13 +74,17 @@ def main():
     else:
         print("[INFO] Running in CPU mode - colorization may be slow")
     
-    # Create watchdog with 10 second polling interval
+    # Parse enhancement flag
+    do_enhance = '--do-enhance' in sys.argv
+
+    # Create watchdog with enhancement flag
     watchdog = VideoWatchdog(
         inputs_dir='inputs',
         outputs_dir='outputs',
         processed_dir='processed',
         temp_dir='temp_video_frames',
-        poll_interval=10  # Check every 10 seconds for better responsiveness
+        poll_interval=10,  # Check every 10 seconds for better responsiveness
+        do_enhance=do_enhance
     )
     
     # Run the watchdog

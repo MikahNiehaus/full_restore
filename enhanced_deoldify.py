@@ -45,4 +45,18 @@ def get_enhanced_colorizer(render_factor=40):
         print(f"[ERROR] Failed to initialize DeOldify: {e}")
         import traceback
         traceback.print_exc()
-        raise
+        raise 
+
+def enhance_image(input_path, output_path, device=None, sharpened_path=None, skip_enhance=False):
+    """
+    Enhance a single image using the full restoration pipeline.
+    Args:
+        input_path (str or Path): Path to the input image
+        output_path (str or Path): Path to save the enhanced image
+        device (torch.device, optional): Device to use (cuda/cpu)
+        sharpened_path (str or Path, optional): Path to save the sharpened (pre-Real-ESRGAN) image
+        skip_enhance (bool, optional): If True, skip the Real-ESRGAN enhancement step
+    """
+    from image_restorer import ImageRestorer
+    restorer = ImageRestorer(device=device)
+    restorer.restore_image(input_path, output_path, save_sharpened_path=sharpened_path, skip_enhance=skip_enhance)

@@ -56,7 +56,7 @@ class VideoWatchdog:
     Simple video watchdog that monitors a directory for new videos and processes them with DeOldify.
     """
     def __init__(self, inputs_dir='inputs', outputs_dir='outputs', processed_dir='processed', 
-                 temp_dir='temp_video_frames', poll_interval=60):
+                 temp_dir='temp_video_frames', poll_interval=60, do_enhance=False):
         self.inputs_dir = Path(inputs_dir)
         self.outputs_dir = Path(outputs_dir)
         self.uploaded_dir = Path(outputs_dir) / 'uploaded'
@@ -64,6 +64,7 @@ class VideoWatchdog:
         self.processed_dir = Path(processed_dir)
         self.temp_dir = Path(temp_dir)
         self.poll_interval = poll_interval
+        self.do_enhance = do_enhance
         self.supported_exts = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
         self.ensure_dirs()
         
@@ -319,23 +320,29 @@ class VideoWatchdog:
                     restore_status = "ERROR"
                     restore_message = f"Image restoration error: {e}"
                     print(f"[ERROR] Error during image restoration: {e}")
-                
-                # Enhance frames (Real-ESRGAN)
-                print("[INFO] Enhancing restored frames with Real-ESRGAN (super-resolution)...")
-                try:
-                    restorer.enhance_frames(temp_restored_dir, temp_enhanced_dir)
-                except Exception as e:
-                    enhance_status = "ERROR"
-                    enhance_message = f"Enhancement error: {e}"
-                    print(f"[ERROR] Error during enhancement: {e}")
-                
+
+                # Enhance frames (Real-ESRGAN) if enabled
+                if self.do_enhance:
+                    print("[INFO] Enhancing restored frames with Real-ESRGAN (super-resolution)...")
+                    try:
+                        restorer.enhance_frames(temp_restored_dir, temp_enhanced_dir)
+                        frames_for_color = temp_enhanced_dir
+                    except Exception as e:
+                        enhance_status = "ERROR"
+                        enhance_message = f"Enhancement error: {e}"
+                        print(f"[ERROR] Error during enhancement: {e}")
+                        frames_for_color = temp_restored_dir
+                else:
+                    print("[INFO] Skipping Real-ESRGAN enhancement (super-resolution) as requested.")
+                    frames_for_color = temp_restored_dir
+
                 # Set up DeOldify colorizer for processed frames
                 print("[INFO] Setting up DeOldify colorizer...")
                 colorizer = get_video_colorizer(render_factor=40)  # Maximum quality
-                
-                # Colorize enhanced frames
-                print("[INFO] Colorizing enhanced frames with DeOldify...")
-                frame_files = sorted(list(temp_enhanced_dir.glob('*.png')))
+
+                # Colorize frames (enhanced or just restored)
+                print("[INFO] Colorizing frames with DeOldify...")
+                frame_files = sorted(list(frames_for_color.glob('*.png')))
                 for i, frame_path in enumerate(tqdm(frame_files, desc="Colorizing frames")):
                     vis = colorizer.vis
                     try:
@@ -467,6 +474,7 @@ Thanks for watching and let's keep history alive together.
         print(f"[INFO] Output directory: {self.outputs_dir}")
         print(f"[INFO] Poll interval: {self.poll_interval} seconds")
         print(f"[INFO] AI image restoration: {'Enabled' if IMAGE_RESTORER_AVAILABLE else 'Disabled'}")
+        print(f"[INFO] Real-ESRGAN enhancement: {'Enabled' if self.do_enhance else 'Disabled'}")
         print(f"[INFO] Audio enhancement: {'Enabled' if AUDIO_ENHANCER_AVAILABLE else 'Disabled'}")
         print(f"[INFO] YouTube upload: {'Enabled' if YOUTUBE_UPLOADER_AVAILABLE else 'Disabled'}")
         

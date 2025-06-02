@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from pathlib import Path
 from tqdm import tqdm
+from realesrgan_adapter import RealESRGANAdapter
 
 # Configure path for local modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -28,13 +29,16 @@ class ImageRestorer:
     to improve image quality before colorization.
     """
     
-    def __init__(self, device=None, models_dir='models'):
+    def __init__(self, device=None, models_dir='models', model_name='RealESRGAN_x4plus', model_path=None, tile=0, tile_pad=10, pre_pad=0, outscale=2, fp32=False, gpu_id=None, alpha_upsampler='realesrgan', denoise_strength=1.0):
         """
-        Initialize the image restorer with models
+        Initialize the image restorer with models and Real-ESRGAN options
         
         Args:
             device: PyTorch device (GPU/CPU)
             models_dir: Directory containing model weights
+            model_name: Real-ESRGAN model name
+            model_path: Path to model weights (optional)
+            tile, tile_pad, pre_pad, outscale, fp32, gpu_id, alpha_upsampler, denoise_strength: Real-ESRGAN options
         """
         self.models_dir = Path(models_dir)
         
@@ -52,41 +56,56 @@ class ImageRestorer:
         
         # Initialize models
         self.models_loaded = False
-        self.load_models()
+        self.load_models(
+            model_name=model_name,
+            model_path=model_path,
+            tile=tile,
+            tile_pad=tile_pad,
+            pre_pad=pre_pad,
+            outscale=outscale,
+            fp32=fp32,
+            gpu_id=gpu_id,
+            alpha_upsampler=alpha_upsampler,
+            denoise_strength=denoise_strength
+        )
         
-    def load_models(self):
-        """Load necessary models for restoration"""
+    def load_models(self, model_name='RealESRGAN_x4plus', model_path=None, tile=0, tile_pad=10, pre_pad=0, outscale=2, fp32=False, gpu_id=None, alpha_upsampler='realesrgan', denoise_strength=1.0):
+        """Load necessary models for restoration, with flexible Real-ESRGAN options."""
         try:
-            # Import Real-ESRGAN for super-resolution
-            from basicsr.archs.rrdbnet_arch import RRDBNet
-            from realesrgan import RealESRGANer
-            
-            # Model paths
-            self.sr_model_path = self.models_dir / 'RealESRGAN_x4plus.pth'
-            
-            # Check if model exists
-            if not self.sr_model_path.exists():
-                print(f"[WARNING] SR model not found at {self.sr_model_path}")
-                print("[INFO] Downloading RealESRGAN model...")
-                self._download_model('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth', 
-                                   self.sr_model_path)
-            
-            # Create RealESRGAN model
-            self.sr_model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-            self.sr_enhancer = RealESRGANer(
-                scale=4,
-                model_path=str(self.sr_model_path),
-                model=self.sr_model,
-                tile=0,  # Tile size, 0 for no tile
-                tile_pad=10,
-                pre_pad=0,
-                half=True,  # Use half precision to save memory
-                device=self.device
+            # Model path logic
+            if not model_path:
+                if model_name == 'RealESRGAN_x4plus':
+                    model_path = Path(r"c:/prj/full_restore/models/RealESRGAN_x4plus.pth")
+                elif model_name == 'RealESRNet_x4plus':
+                    model_path = Path(r"c:/prj/full_restore/models/RealESRNet_x4plus.pth")
+                elif model_name == 'RealESRGAN_x4plus_anime_6B':
+                    model_path = Path(r"c:/prj/full_restore/models/RealESRGAN_x4plus_anime_6B.pth")
+                elif model_name == 'RealESRGAN_x2plus':
+                    model_path = Path(r"c:/prj/full_restore/models/RealESRGAN_x2plus.pth")
+                elif model_name == 'realesr-animevideov3':
+                    model_path = Path(r"c:/prj/full_restore/models/realesr-animevideov3.pth")
+                elif model_name == 'realesr-general-x4v3':
+                    model_path = Path(r"c:/prj/full_restore/models/realesr-general-x4v3.pth")
+                else:
+                    raise FileNotFoundError(f"Unknown model name: {model_name} and no model_path provided.")
+            if not Path(model_path).exists():
+                raise FileNotFoundError(f"SR model not found at {model_path}. Please ensure the weights file exists.")
+            self.sr_enhancer = RealESRGANAdapter(
+                model_name=model_name,
+                model_path=model_path,
+                device=self.device,
+                half=not fp32,
+                tile=tile,
+                tile_pad=tile_pad,
+                pre_pad=pre_pad,
+                outscale=outscale,
+                fp32=fp32,
+                gpu_id=gpu_id,
+                alpha_upsampler=alpha_upsampler,
+                denoise_strength=denoise_strength
             )
-            
             self.models_loaded = True
-            print("[INFO] Image restoration models loaded successfully")
-            
+            print(f"[INFO] Image restoration models loaded successfully (model: {model_name})")
         except ImportError as e:
             print(f"[WARNING] Could not import required modules for restoration: {e}")
             print("[INFO] Install Real-ESRGAN: pip install realesrgan")
@@ -97,34 +116,6 @@ class ImageRestorer:
             traceback.print_exc()
             self.models_loaded = False
             
-    def _download_model(self, url, output_path):
-        """Download a model file"""
-        try:
-            import requests
-            
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-            # Download with progress bar
-            response = requests.get(url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
-            
-            with open(output_path, 'wb') as file, tqdm(
-                desc=f"Downloading {os.path.basename(output_path)}",
-                total=total_size,
-                unit='B',
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
-                for data in response.iter_content(chunk_size=1024):
-                    size = file.write(data)
-                    bar.update(size)
-                    
-            return True
-        except Exception as e:
-            print(f"[ERROR] Failed to download model: {e}")
-            return False
-    
     def _denoise_image(self, image):
         """Apply adaptive denoising to the image"""
         try:
@@ -172,19 +163,18 @@ class ImageRestorer:
             return image
     
     def _enhance_details(self, image):
-        """Enhance image details while preserving structure"""
+        """Enhance image details with very strong sharpening before super-resolution"""
         try:
-            # Create sharpening kernel
-            kernel = np.array([[-1,-1,-1],
-                              [-1, 9,-1],
-                              [-1,-1,-1]])
-            
-            # Apply sharpening
-            sharpened = cv2.filter2D(image, -1, kernel)
-            
-            # Blend with original to avoid over-sharpening
-            enhanced = cv2.addWeighted(image, 0.6, sharpened, 0.4, 0)
-            
+            # Strong sharpening kernel (increase center value for more effect)
+            strong_kernel = np.array([
+                [-2, -2, -2],
+                [-2, 17, -2],
+                [-2, -2, -2]
+            ])
+            # Apply strong sharpening
+            sharpened = cv2.filter2D(image, -1, strong_kernel)
+            # Optionally blend less with the original for even more sharpness
+            enhanced = cv2.addWeighted(image, 0.2, sharpened, 0.8, 0)
             return enhanced
         except Exception as e:
             print(f"[WARNING] Detail enhancement failed: {e}")
@@ -195,16 +185,15 @@ class ImageRestorer:
         if not self.models_loaded:
             print("[WARNING] Super-resolution models not loaded, skipping")
             return image
-        
         try:
-            # Process with Real-ESRGAN
+            # Use the adapter for enhancement
             output, _ = self.sr_enhancer.enhance(image, outscale=2)
             return output
         except Exception as e:
             print(f"[WARNING] Super-resolution failed: {e}")
             return image
     
-    def restore_image(self, image_path, output_path=None, scale=2.0, log_pipeline=True):
+    def restore_image(self, image_path, output_path=None, scale=2.0, log_pipeline=True, save_sharpened_path=None, skip_enhance=False):
         """
         Restore an image using multiple techniques
         
@@ -212,7 +201,9 @@ class ImageRestorer:
             image_path: Path to input image
             output_path: Path to save output image (optional)
             scale: Scale factor for super-resolution
-            
+            save_sharpened_path: Optional path to save the sharpened (pre-Real-ESRGAN) image
+            skip_enhance: If True, skip the Real-ESRGAN enhancement step
+        
         Returns:
             numpy.ndarray: Restored image
         """
@@ -221,7 +212,6 @@ class ImageRestorer:
             if isinstance(image_path, str) or isinstance(image_path, Path):
                 image = cv2.imread(str(image_path))
             else:
-                # Assume it's already a numpy array
                 image = image_path
                 
             if image is None:
@@ -238,39 +228,37 @@ class ImageRestorer:
             # 2. Denoise the image
             image = self._denoise_image(image)
             
-            # 3. Enhance details
-            image = self._enhance_details(image)
-            
-            # 4. Super-resolution (if model is loaded)
-            if self.models_loaded:
-                image = self._super_resolve(image)
-            
-            # Save output if path provided
+            # --- Strong sharpening ---
+            image_sharp = self._enhance_details(image)
+            if save_sharpened_path:
+                os.makedirs(os.path.dirname(str(save_sharpened_path)), exist_ok=True)
+                cv2.imwrite(str(save_sharpened_path), image_sharp)
+                print(f"[INFO] Sharpened image saved to: {save_sharpened_path}")
+            # --- Real-ESRGAN enhancement ---
+            if not skip_enhance and self.models_loaded:
+                image_enhanced = self._super_resolve(image_sharp)
+            else:
+                image_enhanced = image_sharp
             if output_path:
                 os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
-                cv2.imwrite(str(output_path), image)
+                cv2.imwrite(str(output_path), image_enhanced)
                 print(f"[INFO] Restored image saved to: {output_path}")
-            
-            return image
-            
+            return image_enhanced
         except Exception as e:
             print(f"[ERROR] Image restoration failed: {e}")
             import traceback
             traceback.print_exc()
-            
-            # Return original image or None if it failed
             if isinstance(image_path, str) or isinstance(image_path, Path):
                 return cv2.imread(str(image_path))
             return image_path
     
-    def restore_frames(self, input_dir, output_dir, batch_size=32):
+    def restore_frames(self, input_dir, output_dir):
         """
-        Restore all frames in a directory in batches for efficiency.
+        Restore all frames in a directory using DeOldify-based restoration only (no Real-ESRGAN enhancement).
         
         Args:
             input_dir: Directory containing input frames
             output_dir: Directory to save restored frames
-            batch_size: Number of frames to process in a batch (default: 32)
             
         Returns:
             list: Paths to restored frames
@@ -286,37 +274,28 @@ class ImageRestorer:
             print(f"[WARNING] No image files found in {input_dir}")
             return []
         
-        print(f"[INFO] Restoring {len(image_files)} frames in batches of {batch_size}...")
+        print(f"[INFO] Restoring {len(image_files)} frames with DeOldify (no Real-ESRGAN)...")
         restored_paths = []
-        for i in tqdm(range(0, len(image_files), batch_size), desc="Restoring frames"):
-            batch_files = image_files[i:i+batch_size]
-            batch_images = []
-            for img_path in batch_files:
-                img = cv2.imread(str(img_path))
-                if img is not None:
-                    batch_images.append((img_path, img))
-                else:
-                    print(f"[WARNING] Failed to load image: {img_path}")
-            # Only log once per batch
-            if batch_images:
-                self.restore_image(batch_images[0][1], None, log_pipeline=True)
-                # Actually restore all images in batch, but only log for the first
-                for img_path, img in batch_images:
-                    restored = self.restore_image(img, None, log_pipeline=False)
-                    output_path = output_dir / img_path.name
-                    cv2.imwrite(str(output_path), restored)
-                    restored_paths.append(output_path)
+        for img_path in tqdm(image_files, desc="Restoring frames"):
+            img = cv2.imread(str(img_path))
+            if img is not None:
+                # Only DeOldify-based restoration: remove scratches, denoise, sharpen, but skip Real-ESRGAN
+                restored = self.restore_image(img, None, log_pipeline=True, skip_enhance=True)
+                output_path = output_dir / img_path.name
+                cv2.imwrite(str(output_path), restored)
+                restored_paths.append(output_path)
+            else:
+                print(f"[WARNING] Failed to load image: {img_path}")
         print(f"[INFO] Restored {len(restored_paths)} frames to {output_dir}")
         return restored_paths
     
-    def enhance_frames(self, input_dir, output_dir, batch_size=32, outscale=2):
+    def enhance_frames(self, input_dir, output_dir, outscale=2):
         """
-        Enhance all frames in a directory using Real-ESRGAN super-resolution only.
+        Enhance all frames in a directory using Real-ESRGAN super-resolution only (no DeOldify restoration).
         
         Args:
             input_dir: Directory containing input frames
             output_dir: Directory to save enhanced frames
-            batch_size: Number of frames to process in a batch (default: 32)
             outscale: Upscale factor (default: 2)
             
         Returns:
@@ -325,7 +304,6 @@ class ImageRestorer:
         if not self.models_loaded:
             print("[WARNING] Super-resolution models not loaded, skipping enhancement")
             return []
-
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -336,22 +314,20 @@ class ImageRestorer:
             print(f"[WARNING] No image files found in {input_dir}")
             return []
 
-        print(f"[INFO] Enhancing {len(image_files)} frames with Real-ESRGAN in batches of {batch_size}...")
+        print(f"[INFO] Enhancing {len(image_files)} frames with Real-ESRGAN (no DeOldify)...")
         enhanced_paths = []
-        for i in tqdm(range(0, len(image_files), batch_size), desc="Enhancing frames"):
-            batch_files = image_files[i:i+batch_size]
-            for img_path in batch_files:
-                img = cv2.imread(str(img_path))
-                if img is not None:
-                    try:
-                        output, _ = self.sr_enhancer.enhance(img, outscale=outscale)
-                        output_path = output_dir / img_path.name
-                        cv2.imwrite(str(output_path), output)
-                        enhanced_paths.append(output_path)
-                    except Exception as e:
-                        print(f"[WARNING] Enhancement failed for {img_path}: {e}")
-                else:
-                    print(f"[WARNING] Failed to load image: {img_path}")
+        for img_path in tqdm(image_files, desc="Enhancing frames"):
+            img = cv2.imread(str(img_path))
+            if img is not None:
+                try:
+                    output, _ = self.sr_enhancer.enhance(img, outscale=outscale)
+                    output_path = output_dir / img_path.name
+                    cv2.imwrite(str(output_path), output)
+                    enhanced_paths.append(output_path)
+                except Exception as e:
+                    print(f"[WARNING] Enhancement failed for {img_path}: {e}")
+            else:
+                print(f"[WARNING] Failed to load image: {img_path}")
         print(f"[INFO] Enhanced {len(enhanced_paths)} frames to {output_dir}")
         return enhanced_paths
 
@@ -371,26 +347,57 @@ def restore_image(image_path, output_path=None):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Restore old images before colorization")
+    parser = argparse.ArgumentParser(description="Restore or enhance images using DeOldify or Real-ESRGAN.")
     parser.add_argument("input", help="Input image file or directory")
     parser.add_argument("--output", "-o", help="Output image file or directory")
     parser.add_argument("--device", "-d", choices=["cuda", "cpu"], help="Device to use (cuda/cpu)")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for frame restoration (default: 32)")
+    parser.add_argument("--mode", choices=["restore", "enhance"], default="restore", help="Pipeline mode: 'restore' for DeOldify, 'enhance' for Real-ESRGAN")
+    parser.add_argument("--outscale", type=int, default=2, help="Upscale factor for enhancement (Real-ESRGAN only)")
+    parser.add_argument("--model_name", type=str, default="RealESRGAN_x4plus", help="Real-ESRGAN model name (e.g. RealESRGAN_x4plus, RealESRNet_x4plus, RealESRGAN_x4plus_anime_6B, RealESRGAN_x2plus, realesr-animevideov3, realesr-general-x4v3)")
+    parser.add_argument("--model_path", type=str, default=None, help="Path to Real-ESRGAN model weights (optional)")
+    parser.add_argument("--tile", type=int, default=0, help="Tile size for Real-ESRGAN (default: 0)")
+    parser.add_argument("--tile_pad", type=int, default=10, help="Tile padding for Real-ESRGAN (default: 10)")
+    parser.add_argument("--pre_pad", type=int, default=0, help="Pre padding for Real-ESRGAN (default: 0)")
+    parser.add_argument("--fp32", action="store_true", help="Use fp32 precision for Real-ESRGAN (default: fp16)")
+    parser.add_argument("--gpu_id", type=int, default=None, help="GPU device id for Real-ESRGAN (default: None)")
+    parser.add_argument("--alpha_upsampler", type=str, default="realesrgan", help="Alpha upsampler for Real-ESRGAN (default: realesrgan)")
+    parser.add_argument("--denoise_strength", type=float, default=1.0, help="Denoise strength for realesr-general-x4v3 (default: 1.0)")
     args = parser.parse_args()
-    
     # Determine device
     device = None
     if args.device:
         device = torch.device(args.device)
-    
-    # Initialize restorer
-    restorer = ImageRestorer(device=device)
-    
+    # Initialize restorer with all Real-ESRGAN options
+    restorer = ImageRestorer(
+        device=device,
+        model_name=args.model_name,
+        model_path=args.model_path,
+        tile=args.tile,
+        tile_pad=args.tile_pad,
+        pre_pad=args.pre_pad,
+        outscale=args.outscale,
+        fp32=args.fp32,
+        gpu_id=args.gpu_id,
+        alpha_upsampler=args.alpha_upsampler,
+        denoise_strength=args.denoise_strength
+    )
     # Process input
     input_path = Path(args.input)
     if input_path.is_dir():
-        output_dir = args.output if args.output else input_path.parent / (input_path.name + "_restored")
-        restorer.restore_frames(input_path, output_dir, batch_size=args.batch_size)
+        output_dir = args.output if args.output else input_path.parent / (input_path.name + ("_restored" if args.mode=="restore" else "_enhanced"))
+        if args.mode == "restore":
+            restorer.restore_frames(input_path, output_dir)
+        else:
+            restorer.enhance_frames(input_path, output_dir, outscale=args.outscale)
     else:
-        output_path = args.output if args.output else input_path.parent / (input_path.stem + "_restored" + input_path.suffix)
-        restorer.restore_image(input_path, output_path)
+        output_path = args.output if args.output else input_path.parent / (input_path.stem + ("_restored" if args.mode=="restore" else "_enhanced") + input_path.suffix)
+        if args.mode == "restore":
+            restorer.restore_image(input_path, output_path)
+        else:
+            img = cv2.imread(str(input_path))
+            if img is not None:
+                output, _ = restorer.sr_enhancer.enhance(img, outscale=args.outscale)
+                cv2.imwrite(str(output_path), output)
+                print(f"[INFO] Enhanced image saved to: {output_path}")
+            else:
+                print(f"[ERROR] Failed to load image: {input_path}")
