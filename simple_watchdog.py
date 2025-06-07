@@ -33,11 +33,20 @@ except ImportError:
     IMAGE_RESTORER_AVAILABLE = False
     print("[WARNING] AI image restoration module not available - skipping restoration steps")
 
-# Import audio enhancer if available
+# Import audio enhancers if available
 try:
     from audio_enhancer import AudioEnhancer, extract_audio, mux_audio_to_video
     AUDIO_ENHANCER_AVAILABLE = True
     print("[INFO] Audio enhancement module loaded and available")
+    
+    # Also try to import vintage audio enhancer for old films
+    try:
+        from vintage_audio_enhancer import VintageAudioEnhancer
+        VINTAGE_AUDIO_ENHANCER_AVAILABLE = True
+        print("[INFO] Vintage audio enhancement for old films available")
+    except ImportError:
+        VINTAGE_AUDIO_ENHANCER_AVAILABLE = False
+        print("[INFO] Vintage audio enhancement not available")
 except ImportError:
     AUDIO_ENHANCER_AVAILABLE = False
     print("[WARNING] Audio enhancer module not available - skipping audio enhancement")
@@ -240,8 +249,7 @@ class VideoWatchdog:
         # Extract audio for enhancement if available
         temp_audio_path = Path('temp_audio.wav')  # Use .wav for better quality
         enhanced_audio_path = None
-        
-        # AUDIO
+          # AUDIO
         audio_status = "SUCCESS"
         audio_message = ""
         # Extract and enhance audio if available
@@ -252,14 +260,37 @@ class VideoWatchdog:
             if audio_extracted and temp_audio_path.exists():
                 try:
                     enhanced_audio_path = Path('temp_audio_enhanced.wav')
-                    enhancer = AudioEnhancer(verbose=True)
-                    audio_enhanced = enhancer.enhance_audio(str(temp_audio_path), str(enhanced_audio_path))
                     
-                    if not audio_enhanced or not enhanced_audio_path.exists():
-                        enhanced_audio_path = temp_audio_path
-                        audio_status = "WARNING"
-                        audio_message = "Audio enhancement failed, using original audio"
-                        print("[WARNING] Audio enhancement failed, using original audio")
+                    # First try our specialized vintage audio enhancer for old films
+                    if VINTAGE_AUDIO_ENHANCER_AVAILABLE:
+                        vintage_enhancer = VintageAudioEnhancer(verbose=True)
+                        vintage_enhanced = vintage_enhancer.enhance_vintage_audio(
+                            str(temp_audio_path), str(enhanced_audio_path)
+                        )
+                        
+                        if vintage_enhanced and enhanced_audio_path.exists():
+                            print("[INFO] Applied vintage-optimized audio enhancement for old films")
+                            audio_message = "Applied vintage-optimized audio enhancement"
+                        else:
+                            # Fall back to regular audio enhancer
+                            enhancer = AudioEnhancer(verbose=True)
+                            audio_enhanced = enhancer.enhance_audio(str(temp_audio_path), str(enhanced_audio_path))
+                            
+                            if not audio_enhanced or not enhanced_audio_path.exists():
+                                enhanced_audio_path = temp_audio_path
+                                audio_status = "WARNING"
+                                audio_message = "Audio enhancement failed, using original audio"
+                                print("[WARNING] Audio enhancement failed, using original audio")
+                    else:
+                        # Use regular enhancer if vintage enhancer isn't available
+                        enhancer = AudioEnhancer(verbose=True)
+                        audio_enhanced = enhancer.enhance_audio(str(temp_audio_path), str(enhanced_audio_path))
+                        
+                        if not audio_enhanced or not enhanced_audio_path.exists():
+                            enhanced_audio_path = temp_audio_path
+                            audio_status = "WARNING"
+                            audio_message = "Audio enhancement failed, using original audio"
+                            print("[WARNING] Audio enhancement failed, using original audio")
                 except Exception as e:
                     audio_status = "ERROR"
                     audio_message = f"Audio enhancement error: {e}"

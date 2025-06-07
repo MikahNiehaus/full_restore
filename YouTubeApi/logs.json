@@ -119,5 +119,27 @@
             "status": "SUCCESS",
             "message": ""
         }
+    },
+    "Martin Luther King Jr. Nobel Peace Prize Acceptance Speech.mp4": {
+        "audio": {
+            "timestamp": "2025-06-07 11:42:13",
+            "status": "WARNING",
+            "message": "No audio track found or extraction failed"
+        },
+        "restore": {
+            "timestamp": "2025-06-06 20:45:21",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "enhance": {
+            "timestamp": "2025-06-06 20:45:21",
+            "status": "SUCCESS",
+            "message": ""
+        },
+        "colorize": {
+            "timestamp": "2025-06-06 20:45:21",
+            "status": "SUCCESS",
+            "message": ""
+        }
     }
 }
