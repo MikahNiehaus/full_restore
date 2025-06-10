@@ -95,15 +95,39 @@ def test_vintage_audio_enhancement(video_path=None):
       # Create the temp directory for audio extraction
     temp_audio_path = Path("temp_audio.wav")  # Use root directory for simplicity
     enhanced_audio_path = output_dir / f"{video_path.stem}_vintage_enhanced.wav"
-    result_video_path = output_dir / f"{video_path.stem}_audio_enhanced.mp4"
-    
-    # Extract audio with ffmpeg
+    result_video_path = output_dir / f"{video_path.stem}_audio_enhanced.mp4"    # Extract audio with ffmpeg while preserving timing information
     logging.info("Extracting original audio...")
-    # Use absolute paths and simpler command first
+    # Use absolute paths
     video_abs_path = video_path.absolute()
     temp_abs_path = temp_audio_path.absolute()
     
-    extract_cmd = f'ffmpeg -y -i "{video_abs_path}" -vn -acodec pcm_s16le "{temp_abs_path}"'
+    # First get video information (frame rate, duration)
+    video_info_cmd = f'ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate,duration -of default=noprint_wrappers=1 "{video_abs_path}"'
+    video_info = subprocess.check_output(video_info_cmd, shell=True, text=True)
+    
+    # Parse frame rate
+    frame_rate = None
+    duration = None
+    for line in video_info.split('\n'):
+        if line.startswith('r_frame_rate='):
+            # Format is typically "numerator/denominator"
+            parts = line.split('=')[1].split('/')
+            if len(parts) == 2:
+                try:
+                    frame_rate = float(parts[0]) / float(parts[1])
+                    logging.info(f"Video frame rate: {frame_rate} fps")
+                except (ValueError, ZeroDivisionError):
+                    logging.warning(f"Could not parse frame rate: {line}")
+        elif line.startswith('duration='):
+            try:
+                duration = float(line.split('=')[1])
+                logging.info(f"Video duration: {duration} seconds")
+            except ValueError:
+                logging.warning(f"Could not parse duration: {line}")
+      # We already have absolute paths from earlier
+    
+    # Extract audio with precise timing preservation
+    extract_cmd = f'ffmpeg -y -i "{video_abs_path}" -vn -acodec pcm_s16le -ar 48000 -ac 2 "{temp_abs_path}"'
     logging.info(f"Running command: {extract_cmd}")
     extract_result = os.system(extract_cmd)
     
@@ -111,6 +135,18 @@ def test_vintage_audio_enhancement(video_path=None):
         logging.error("Failed to extract audio from video")
         logging.error(f"Check if ffmpeg is installed and working. Command used: {extract_cmd}")
         sys.exit(1)
+    
+    # Verify audio was extracted correctly
+    if temp_audio_path.stat().st_size == 0:
+        logging.error("Extracted audio file is empty")
+        sys.exit(1)
+    
+    audio_info_cmd = f'ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate,channels -of default=noprint_wrappers=1 "{temp_abs_path}"'
+    try:
+        audio_info = subprocess.check_output(audio_info_cmd, shell=True, text=True)
+        logging.info(f"Extracted audio properties: {audio_info.strip()}")
+    except subprocess.SubprocessError:
+        logging.warning("Could not retrieve audio properties")
     
     logging.info(f"Successfully extracted audio to: {temp_audio_path}")
       # Enhance audio
@@ -156,8 +192,7 @@ def test_vintage_audio_enhancement(video_path=None):
             logging.info(f"Saved waveform comparison to: {plot_path}")
         except Exception as e:
             logging.warning(f"Could not create waveform visualization: {e}")
-        
-        # Create enhanced video with the new audio
+          # Create enhanced video with the new audio
         logging.info("Creating video with enhanced audio...")
         # Using absolute paths for reliability
         video_abs_path = video_path.absolute()
@@ -168,7 +203,15 @@ def test_vintage_audio_enhancement(video_path=None):
         if not result_video_path.parent.exists():
             result_video_path.parent.mkdir(parents=True, exist_ok=True)
         
-        mux_cmd = f'ffmpeg -y -i "{video_abs_path}" -i "{enhanced_abs_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "{result_abs_path}"'
+        # Use special flags to ensure perfect audio-video sync
+        # -vsync 0: preserve the original timestamps
+        # -async 1: audio sync method that minimizes drift
+        # -af "aresample=async=1": resample audio to maintain sync
+        mux_cmd = (f'ffmpeg -y -i "{video_abs_path}" -i "{enhanced_abs_path}" '
+                  f'-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k '
+                  f'-vsync 0 -af "aresample=async=1" '
+                  f'-metadata:s:a:0 "sync_audio=true" '
+                  f'-shortest "{result_abs_path}"')
         logging.info(f"Running mux command: {mux_cmd}")
         mux_result = os.system(mux_cmd)
         
@@ -177,10 +220,13 @@ def test_vintage_audio_enhancement(video_path=None):
         else:
             logging.error("Failed to create video with enhanced audio")
             logging.error(f"Mux command exit code: {mux_result}")
-            
-            # Try with original audio as fallback
+              # Try with original audio as fallback
             logging.info("Trying with original audio as fallback...")
-            fallback_mux_cmd = f'ffmpeg -y -i "{video_abs_path}" -i "{temp_abs_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "{result_abs_path}"'
+            fallback_mux_cmd = (f'ffmpeg -y -i "{video_abs_path}" -i "{temp_abs_path}" '
+                              f'-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k '
+                              f'-vsync 0 -af "aresample=async=1" '
+                              f'-metadata:s:a:0 "sync_audio=true" '
+                              f'-shortest "{result_abs_path}"')
             fallback_result = os.system(fallback_mux_cmd)
             
             if fallback_result == 0 and result_video_path.exists():
@@ -189,8 +235,7 @@ def test_vintage_audio_enhancement(video_path=None):
                 logging.error("Failed to create video with any audio")
     else:
         logging.error("Audio enhancement failed")
-        
-        # Try with original audio as fallback
+          # Try with original audio as fallback
         logging.info("Trying with original audio as fallback...")
         video_abs_path = video_path.absolute()
         temp_abs_path = temp_audio_path.absolute()
@@ -200,7 +245,11 @@ def test_vintage_audio_enhancement(video_path=None):
         if not result_video_path.parent.exists():
             result_video_path.parent.mkdir(parents=True, exist_ok=True)
             
-        fallback_mux_cmd = f'ffmpeg -y -i "{video_abs_path}" -i "{temp_abs_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "{result_abs_path}"'
+        fallback_mux_cmd = (f'ffmpeg -y -i "{video_abs_path}" -i "{temp_abs_path}" '
+                          f'-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k '
+                          f'-vsync 0 -af "aresample=async=1" '
+                          f'-metadata:s:a:0 "sync_audio=true" '
+                          f'-shortest "{result_abs_path}"')
         fallback_result = os.system(fallback_mux_cmd)
         
         if fallback_result == 0 and result_video_path.exists():

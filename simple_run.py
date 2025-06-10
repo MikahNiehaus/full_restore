@@ -1,19 +1,29 @@
 import sys
 import os
+from pathlib import Path
 
 # Handle CPU flag right at the beginning
 if '--cpu' in sys.argv:
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
     print('[INFO] Forcing CPU mode (CUDA disabled)')
+else:
+    # Force GPU usage by default
+    print('[INFO] Attempting to use GPU acceleration')
 
 # Import our PyTorch patch FIRST before any torch imports
 from torch_safety_patch import *
 
-# Check GPU availability and show detailed information
+# Import GPU accelerator module to set up GPU for all components
+if '--cpu' not in sys.argv:
+    from force_gpu import gpu_available
+else:
+    gpu_available = False
+
+# Import torch for additional GPU checks
 import torch
 def check_gpu_availability():
     """Check and log GPU availability information"""
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and '--cpu' not in sys.argv:
         device_count = torch.cuda.device_count()
         cuda_version = torch.version.cuda
         device_name = torch.cuda.get_device_name(0) if device_count > 0 else "N/A"
@@ -24,17 +34,20 @@ def check_gpu_availability():
         print(f"[INFO] GPU device: {device_name}")
         print(f"[INFO] Number of CUDA devices: {device_count}")
         
-        # Enable cuDNN auto-tuning for better performance
-        if torch.backends.cudnn.is_available():
+        # If force_gpu didn't already enable cuDNN benchmarking
+        if not torch.backends.cudnn.benchmark and torch.backends.cudnn.is_available():
             torch.backends.cudnn.benchmark = True
             print(f"[INFO] cuDNN version: {torch.backends.cudnn.version()}")
+            print(f"[INFO] Enabled cuDNN benchmark mode")
         
         return True
     else:
-        print("[INFO] CUDA is not available, using CPU mode")
+        print("[INFO] CUDA is not available or CPU mode forced, using CPU mode")
         print(f"[INFO] PyTorch version: {torch.__version__}")
         
-        if '+cpu' in torch.__version__:
+        if torch.cuda.is_available() and '--cpu' in sys.argv:
+            print("[INFO] Note: GPU is available but CPU mode was forced with --cpu flag")
+        elif '+cpu' in torch.__version__:
             print("[WARNING] You're using a CPU-only PyTorch build")
             print("[WARNING] For GPU acceleration, reinstall PyTorch with CUDA:")
             print("[WARNING] pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
@@ -42,7 +55,7 @@ def check_gpu_availability():
         return False
 
 # Check GPU availability on startup
-using_gpu = check_gpu_availability() and '--cpu' not in sys.argv
+using_gpu = gpu_available and check_gpu_availability()
 
 # Import the simplified watchdog that uses DeOldify directly
 from simple_watchdog import VideoWatchdog, YOUTUBE_UPLOADER_AVAILABLE

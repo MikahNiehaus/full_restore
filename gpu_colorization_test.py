@@ -52,16 +52,29 @@ try:
     # First import device and set it to GPU
     from deoldify import device
     from deoldify.device_id import DeviceId
-    
     # Try both ways to set the device
     try:
-        # Try using torch.device first
-        device.set(device=torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
+        # Try using DeviceId enum first - it's the most reliable method
+        if torch.cuda.is_available():
+            device.set(DeviceId.GPU0)
+            logging.info(f"Set device to GPU0 using DeviceId enum")
+        else:
+            device.set(DeviceId.CPU)
+            logging.info(f"Set device to CPU using DeviceId enum")
     except Exception as e:
-        logging.warning(f"Setting device with torch.device failed: {e}")
-        # Fall back to DeviceId enum - use GPU0 instead of GPU
-        device.set(DeviceId.GPU0 if torch.cuda.is_available() else DeviceId.CPU)
-      # Now import the visualize module for colorization
+        logging.warning(f"Setting device with DeviceId failed: {e}")
+        # Fall back to direct method
+        try:
+            import torch
+            if torch.cuda.is_available():
+                os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+                logging.info("Set CUDA_VISIBLE_DEVICES=0 directly")
+            else:
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
+                logging.info("Set CUDA_VISIBLE_DEVICES='' directly")
+        except Exception as e2:
+            logging.error(f"Both device setting methods failed: {e2}")
+    # Now import the visualize module for colorization
     from deoldify.visualize import get_video_colorizer
     
     logging.info("Successfully imported DeOldify")
@@ -74,7 +87,7 @@ try:
         logging.info(f"Initial GPU memory reserved: {torch.cuda.memory_reserved(0) / 1024**2:.2f} MB")
         
     logging.info("Starting colorization test...")
-      # Get the colorizer with GPU acceleration
+    # Get the colorizer with GPU acceleration
     start_time = time.time()
     colorizer = get_video_colorizer(render_factor=21)
     end_time = time.time()

@@ -30,7 +30,6 @@ class ImageRestorer:
     Advanced image restoration class that applies multiple restoration techniques
     to improve image quality before colorization.
     """
-    
     def __init__(self, device=None, models_dir='models', model_name='RealESRGAN_x4plus', model_path=None, tile=0, tile_pad=10, pre_pad=0, outscale=2, fp32=False, gpu_id=None, alpha_upsampler='realesrgan', denoise_strength=1.0, force_device=None):
         """
         Initialize the image restorer with models and Real-ESRGAN options
@@ -55,13 +54,11 @@ class ImageRestorer:
             self.device = device
             print(f"[INFO] ImageRestorer: Using user-specified device: {self.device}")
         else:
-            # Auto-detect best device - ALWAYS try to use CUDA if available
+            # Auto-detect best device
             if torch.cuda.is_available():
                 self.device = torch.device('cuda')
-                gpu_name = torch.cuda.get_device_name(0)
-                gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                print(f"[INFO] ImageRestorer: Using GPU acceleration with {gpu_name}")
-                print(f"[INFO] ImageRestorer: GPU memory: {gpu_mem:.2f} GB")
+                print(f"[INFO] ImageRestorer: Using GPU acceleration with {torch.cuda.get_device_name(0)}")
+                print(f"[INFO] ImageRestorer: GPU memory: {torch.cuda.get_device_properties(0).total_memory / (1024**3):.2f} GB")
                 print(f"[INFO] ImageRestorer: CUDA Version: {torch.version.cuda}")
                 # Set optimal CUDA performance settings
                 torch.backends.cudnn.benchmark = True
@@ -185,22 +182,25 @@ class ImageRestorer:
             # Apply morphology to connect nearby scratches
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
             mask = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-              # Inpaint to remove scratches
+            
+            # Inpaint to remove scratches
             restored = cv2.inpaint(image, mask, 3, cv2.INPAINT_NS)
             
             return restored
         except Exception as e:
             print(f"[WARNING] Scratch removal failed: {e}")
             return image
-            
+    
     def _enhance_details(self, image):
         """Enhance image details with very strong sharpening before super-resolution"""
-        try:            # Strong sharpening kernel (increase center value for more effect)
+        try:
+            # Strong sharpening kernel (increase center value for more effect)
             strong_kernel = np.array([
                 [-2, -2, -2],
                 [-2, 17, -2],
                 [-2, -2, -2]
-            ]) # Apply strong sharpening
+            ])
+            # Apply strong sharpening
             sharpened = cv2.filter2D(image, -1, strong_kernel)
             # Optionally blend less with the original for even more sharpness
             enhanced = cv2.addWeighted(image, 0.2, sharpened, 0.8, 0)
@@ -223,7 +223,8 @@ class ImageRestorer:
                 # Check available memory and set tile size dynamically if needed
                 free_memory = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_reserved(0)
                 free_memory_mb = free_memory / (1024**2)
-                  # If memory is tight, use tiling automatically
+                
+                # If memory is tight, use tiling automatically
                 h, w = image.shape[:2]
                 pixels = h * w
                 # Estimate memory need: ~4 bytes per pixel × 3 channels × 4 for processing overhead
@@ -231,29 +232,15 @@ class ImageRestorer:
                 
                 if est_memory_need > free_memory_mb * 0.8:  # If we need more than 80% of free memory
                     print(f"[INFO] Large image detected ({w}x{h}), memory optimization active")
-                    # Calculate a safe tile size based on available memory
+                    # Calculate a safe tile size
                     safe_tile_size = int(np.sqrt((free_memory_mb * 0.7 * 1024**2) / (3 * 4 * 4)))
                     print(f"[INFO] Using automatic tile size of {safe_tile_size}px")
-                    
-                    # Make sure tile size is at least 256 but not more than 1024
-                    tile_size = max(256, min(safe_tile_size, 1024))
-                    print(f"[INFO] Final tile size: {tile_size}px")
-                    
-                    # Set the tile size on the upsampler
-                    if hasattr(self.sr_enhancer, 'upsampler') and hasattr(self.sr_enhancer.upsampler, 'tile'):
-                        self.sr_enhancer.upsampler.tile = tile_size
-                    else:
-                        # Handle adapter pattern (use tile attribute directly)
-                        self.sr_enhancer.tile = tile_size
+                    self.sr_enhancer.upsampler.tile = min(safe_tile_size, 1024)  # Cap at 1024px tiles
                 else:
                     # Use full image processing for better quality when memory allows
-                    print("[INFO] Sufficient GPU memory, processing without tiling")
-                    # Set the tile size on the upsampler
-                    if hasattr(self.sr_enhancer, 'upsampler') and hasattr(self.sr_enhancer.upsampler, 'tile'):
+                    if self.sr_enhancer.upsampler.tile != 0:
+                        print("[INFO] Sufficient GPU memory, processing without tiling")
                         self.sr_enhancer.upsampler.tile = 0
-                    else:
-                        # Handle adapter pattern
-                        self.sr_enhancer.tile = 0
             
             # Use the adapter for enhancement
             start_time = time.time()

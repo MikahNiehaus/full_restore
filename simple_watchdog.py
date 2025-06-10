@@ -26,8 +26,16 @@ except ImportError:
 
 # Import image restorer if available
 try:
+    import torch
     from image_restorer import ImageRestorer
     IMAGE_RESTORER_AVAILABLE = True
+    
+    # Check if GPU is available for restoration
+    if torch.cuda.is_available():
+        print(f"[INFO] AI image restoration will use GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("[INFO] AI image restoration will use CPU mode (slower)")
+    
     print("[INFO] AI image restoration module loaded and available")
 except ImportError:
     IMAGE_RESTORER_AVAILABLE = False
@@ -53,6 +61,23 @@ except ImportError:
 
 # Try to import DeOldify - this will verify it's working
 try:
+    # First check if DeOldify device is set up for GPU
+    import torch
+    from deoldify import device
+    from deoldify.device_id import DeviceId
+    
+    # Set device to GPU if available
+    if torch.cuda.is_available():
+        device.set(DeviceId.GPU0)
+        print(f"[INFO] DeOldify device set to GPU0 successfully")
+        print(f"[INFO] Current DeOldify device: {device.current()}")
+        print(f"[INFO] Using GPU: {torch.cuda.get_device_name(0)}")
+        # Enable cuDNN for better performance
+        torch.backends.cudnn.benchmark = True
+    else:
+        device.set(DeviceId.CPU)
+        print("[INFO] DeOldify device set to CPU (no GPU available)")
+    
     from deoldify.visualize import get_video_colorizer
     print("[INFO] Successfully imported DeOldify")
 except Exception as e:
@@ -340,11 +365,16 @@ class VideoWatchdog:
                             pbar.update(1)
                 
                 video.release()
-                frames_extracted = True
-                
-                # Restore frames
+                frames_extracted = True                # Restore frames
                 print("[INFO] Applying AI image restoration...")
-                restorer = ImageRestorer()
+                # Force GPU usage for restoration if available
+                import torch  # Import torch here to ensure it's defined
+                if torch.cuda.is_available():
+                    cuda_device = torch.device('cuda')
+                    print(f"[INFO] Using GPU for image restoration: {torch.cuda.get_device_name(0)}")
+                    restorer = ImageRestorer(device=cuda_device)
+                else:
+                    restorer = ImageRestorer()
                 try:
                     restorer.restore_frames(temp_frames_dir, temp_restored_dir)
                 except Exception as e:
@@ -401,15 +431,19 @@ class VideoWatchdog:
         
         self.log_json(video_path.name, "restore", restore_status, restore_message)
         self.log_json(video_path.name, "enhance", enhance_status, enhance_message)
-        self.log_json(video_path.name, "colorize", colorize_status, colorize_message)
-
-        # If image restoration failed or is not available, use standard DeOldify directly
+        self.log_json(video_path.name, "colorize", colorize_status, colorize_message)        # If image restoration failed or is not available, use standard DeOldify directly
         if not frames_extracted:
             print("[INFO] Using standard DeOldify colorization...")
-            # Force PyTorch to use weights_only=False for model loading
-            import torch.serialization
-            with torch.serialization.safe_globals([slice]):
+            # Import PyTorch to ensure it's defined
+            import torch
+            
+            # Use the patched torch.load directly from the global import
+            # We imported torch_safety_patch at the top of the file, so it's already applied
+            try:
                 colorizer = get_video_colorizer(render_factor=40)  # Maximum quality
+            except Exception as e:
+                print(f"[ERROR] Failed to load colorizer: {e}")
+                raise
             
             # Process video directly with DeOldify
             print("[INFO] Colorizing video with DeOldify...")

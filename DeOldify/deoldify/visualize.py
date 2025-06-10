@@ -351,16 +351,29 @@ class VideoColorizer:
         
         temp_audio_path = audio_temp_dir / 'temp_audio.wav'
         enhanced_audio_path = audio_temp_dir / 'temp_audio_enhanced.wav'
-        audio_path_to_use = None
-          # Extract the audio from the original video
+        audio_path_to_use = None        # Extract the audio from the original video with precise timing preservation
+        # First get video frame rate for sync purposes
+        video_info_cmd = f'ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1 "{str(source_path)}"'
+        try:
+            video_info = subprocess.check_output(video_info_cmd, shell=True, text=True)
+            frame_rate_str = video_info.strip().split('=')[1] if '=' in video_info else None
+            logging.info(f"Video frame rate info: {frame_rate_str}")
+        except Exception as e:
+            logging.warning(f"Could not determine video frame rate: {e}")
+        
+        # Extract audio with precise timing preservation
         extract_cmd = (
-            'ffmpeg -y -i "' + str(source_path) + '" -vn -acodec pcm_s16le "'
+            'ffmpeg -y -i "' + str(source_path) + '" -vn -acodec pcm_s16le -ar 48000 -ac 2 "'
             + str(temp_audio_path) + '" -hide_banner -nostats -loglevel error'
         )
         
         logging.info(f"Extracting audio with command: {extract_cmd}")
         # First check if audio extraction succeeds
-        extract_result = os.system(extract_cmd)
+        try:
+            extract_result = os.system(extract_cmd)
+        except Exception as e:
+            logging.error(f"Error during audio extraction: {e}")
+            extract_result = 1
         if extract_result == 0 and temp_audio_path.exists() and temp_audio_path.stat().st_size > 0:
             logging.info(f"Successfully extracted audio: {temp_audio_path} ({temp_audio_path.stat().st_size} bytes)")
             # Try to enhance the audio if possible - with multiple fallbacks
@@ -428,23 +441,29 @@ class VideoColorizer:
                 # Final fallback: original audio
                 audio_path_to_use = temp_audio_path
                 logging.info("Using original audio due to enhancement errors")
-        
-        # Add audio to the colorized video
+          # Add audio to the colorized video with perfect sync
         if audio_path_to_use and audio_path_to_use.exists():
-            # Use the enhanced audio if available, otherwise fall back to direct stream copy
-            os.system(
+            # Use the enhanced audio if available with special flags for perfect sync
+            mux_cmd = (
                 'ffmpeg -y -i "' + str(colorized_path) + '" -i "' + str(audio_path_to_use) + '" '
-                '-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "' 
-                + str(result_path) + '" -hide_banner -nostats -loglevel error'
+                '-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k '
+                '-vsync 0 -af "aresample=async=1" '
+                '-metadata:s:a:0 "sync_audio=true" '
+                '-shortest "' + str(result_path) + '" -hide_banner -nostats -loglevel error'
             )
+            logging.info(f"Running audio mux command with enhanced audio: {mux_cmd}")
+            os.system(mux_cmd)
             logging.info("Added enhanced audio to colorized video")
         else:
-            # Fallback: Add original audio stream directly (no re-encoding)
-            os.system(
+            # Fallback: Add original audio stream with sync preservation
+            mux_cmd = (
                 'ffmpeg -y -i "' + str(colorized_path) + '" -i "' + str(source_path) + '" '
-                '-map 0:v:0 -map 1:a:0? -c:v copy -c:a copy -shortest "' + str(result_path) + '" '
+                '-map 0:v:0 -map 1:a:0? -c:v copy -c:a aac -b:a 192k '
+                '-vsync 0 -async 1 -shortest "' + str(result_path) + '" '
                 '-hide_banner -nostats -loglevel error'
             )
+            logging.info(f"Running audio mux command with original audio: {mux_cmd}")
+            os.system(mux_cmd)
             logging.info("Added original audio stream to colorized video")
         
         # Clean up temporary audio files
